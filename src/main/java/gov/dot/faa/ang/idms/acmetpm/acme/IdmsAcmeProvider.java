@@ -38,7 +38,7 @@ public class IdmsAcmeProvider extends AbstractAcmeProvider {
 
     @Override
     protected HttpConnector createHttpConnector(NetworkSettings settings) {
-        return new EjbcaConnector(settings);
+        return new EjbcaHttpConnector(settings);
     }
     
 }

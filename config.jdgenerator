@@ -1,0 +1,162 @@
+==== CONFIGS ====		
+{
+    "base_path": "/home/robert.ctr.sherwood/Projects/acmetpm",
+    "out": "/home/robert.ctr.sherwood/Projects/acmetpm/javadoc",
+    "javadoc_executable": "/usr/lib/jvm/jdk-17-oracle-x64/bin/javadoc",
+    "exclude": [],
+    "raw_params": ""
+}
+
+==== COMMAND ====
+"/usr/lib/jvm/jdk-17-oracle-x64/bin/javadoc" 
+	-sourcepath "/home/robert.ctr.sherwood/Projects/acmetpm" 
+	-d "/home/robert.ctr.sherwood/Projects/acmetpm/javadoc" 
+	"/home/robert.ctr.sherwood/Projects/acmetpm/src/main/java/gov/dot/faa/ang/idms/App.java"
+	"/home/robert.ctr.sherwood/Projects/acmetpm/src/main/java/gov/dot/faa/ang/idms/acmetpm/AcmeTpm.java"
+	"/home/robert.ctr.sherwood/Projects/acmetpm/src/main/java/gov/dot/faa/ang/idms/acmetpm/AcmeTpmException.java"
+	"/home/robert.ctr.sherwood/Projects/acmetpm/src/main/java/gov/dot/faa/ang/idms/acmetpm/PropLoader.java"
+	"/home/robert.ctr.sherwood/Projects/acmetpm/src/main/java/gov/dot/faa/ang/idms/acmetpm/acme/EjbcaHttpConnector.java"
+	"/home/robert.ctr.sherwood/Projects/acmetpm/src/main/java/gov/dot/faa/ang/idms/acmetpm/acme/EjbcaNetworkSettings.java"
+	"/home/robert.ctr.sherwood/Projects/acmetpm/src/main/java/gov/dot/faa/ang/idms/acmetpm/acme/HTTPClientTPM.java"
+	"/home/robert.ctr.sherwood/Projects/acmetpm/src/main/java/gov/dot/faa/ang/idms/acmetpm/acme/IdmsAcmeProvider.java"
+	"/home/robert.ctr.sherwood/Projects/acmetpm/src/main/java/gov/dot/faa/ang/idms/acmetpm/apacheconfig/ApacheConfigReader.java"
+	"/home/robert.ctr.sherwood/Projects/acmetpm/src/main/java/gov/dot/faa/ang/idms/acmetpm/apacheconfig/ApacheVirtualHostConfig.java"
+	"/home/robert.ctr.sherwood/Projects/acmetpm/src/main/java/gov/dot/faa/ang/idms/acmetpm/tpmcrypto/TpmProvider.java"
+	"/home/robert.ctr.sherwood/Projects/acmetpm/src/test/java/gov/dot/faa/ang/idms/AppTest.java"
+
+
+==== JAVADOC OUTPUT ====
+Loading source file /home/robert.ctr.sherwood/Projects/acmetpm/src/main/java/gov/dot/faa/ang/idms/App.java...
+Loading source file /home/robert.ctr.sherwood/Projects/acmetpm/src/main/java/gov/dot/faa/ang/idms/acmetpm/AcmeTpm.java...
+Loading source file /home/robert.ctr.sherwood/Projects/acmetpm/src/main/java/gov/dot/faa/ang/idms/acmetpm/AcmeTpmException.java...
+Loading source file /home/robert.ctr.sherwood/Projects/acmetpm/src/main/java/gov/dot/faa/ang/idms/acmetpm/PropLoader.java...
+Loading source file /home/robert.ctr.sherwood/Projects/acmetpm/src/main/java/gov/dot/faa/ang/idms/acmetpm/acme/EjbcaHttpConnector.java...
+Loading source file /home/robert.ctr.sherwood/Projects/acmetpm/src/main/java/gov/dot/faa/ang/idms/acmetpm/acme/EjbcaNetworkSettings.java...
+Loading source file /home/robert.ctr.sherwood/Projects/acmetpm/src/main/java/gov/dot/faa/ang/idms/acmetpm/acme/HTTPClientTPM.java...
+Loading source file /home/robert.ctr.sherwood/Projects/acmetpm/src/main/java/gov/dot/faa/ang/idms/acmetpm/acme/IdmsAcmeProvider.java...
+Loading source file /home/robert.ctr.sherwood/Projects/acmetpm/src/main/java/gov/dot/faa/ang/idms/acmetpm/apacheconfig/ApacheConfigReader.java...
+Loading source file /home/robert.ctr.sherwood/Projects/acmetpm/src/main/java/gov/dot/faa/ang/idms/acmetpm/apacheconfig/ApacheVirtualHostConfig.java...
+Loading source file /home/robert.ctr.sherwood/Projects/acmetpm/src/main/java/gov/dot/faa/ang/idms/acmetpm/tpmcrypto/TpmProvider.java...
+Loading source file /home/robert.ctr.sherwood/Projects/acmetpm/src/test/java/gov/dot/faa/ang/idms/AppTest.java...
+Constructing Javadoc information...
+/home/robert.ctr.sherwood/Projects/acmetpm/src/main/java/gov/dot/faa/ang/idms/App.java:7: error: package org.shredzone.acme4j does not exist
+import org.shredzone.acme4j.Session;
+                           ^
+/home/robert.ctr.sherwood/Projects/acmetpm/src/main/java/gov/dot/faa/ang/idms/acmetpm/AcmeTpm.java:9: error: package org.shredzone.acme4j does not exist
+import org.shredzone.acme4j.Session;
+                           ^
+/home/robert.ctr.sherwood/Projects/acmetpm/src/main/java/gov/dot/faa/ang/idms/acmetpm/AcmeTpm.java:10: error: package org.shredzone.acme4j.provider does not exist
+import org.shredzone.acme4j.provider.AcmeProvider;
+                                    ^
+/home/robert.ctr.sherwood/Projects/acmetpm/src/main/java/gov/dot/faa/ang/idms/acmetpm/tpmcrypto/TpmProvider.java:39: error: package org.bouncycastle.asn1.x500 does not exist
+import org.bouncycastle.asn1.x500.X500Name;
+                                 ^
+/home/robert.ctr.sherwood/Projects/acmetpm/src/main/java/gov/dot/faa/ang/idms/acmetpm/tpmcrypto/TpmProvider.java:40: error: package org.bouncycastle.asn1.x500 does not exist
+import org.bouncycastle.asn1.x500.X500NameBuilder;
+                                 ^
+/home/robert.ctr.sherwood/Projects/acmetpm/src/main/java/gov/dot/faa/ang/idms/acmetpm/tpmcrypto/TpmProvider.java:41: error: package org.bouncycastle.asn1.x500.style does not exist
+import org.bouncycastle.asn1.x500.style.BCStyle;
+                                       ^
+/home/robert.ctr.sherwood/Projects/acmetpm/src/main/java/gov/dot/faa/ang/idms/acmetpm/tpmcrypto/TpmProvider.java:42: error: package org.bouncycastle.cert does not exist
+import org.bouncycastle.cert.X509CertificateHolder;
+                            ^
+/home/robert.ctr.sherwood/Projects/acmetpm/src/main/java/gov/dot/faa/ang/idms/acmetpm/tpmcrypto/TpmProvider.java:43: error: package org.bouncycastle.cert does not exist
+import org.bouncycastle.cert.X509v3CertificateBuilder;
+                            ^
+/home/robert.ctr.sherwood/Projects/acmetpm/src/main/java/gov/dot/faa/ang/idms/acmetpm/tpmcrypto/TpmProvider.java:44: error: package org.bouncycastle.cert.jcajce does not exist
+import org.bouncycastle.cert.jcajce.JcaX509CertificateConverter;
+                                   ^
+/home/robert.ctr.sherwood/Projects/acmetpm/src/main/java/gov/dot/faa/ang/idms/acmetpm/tpmcrypto/TpmProvider.java:45: error: package org.bouncycastle.jce.provider does not exist
+import org.bouncycastle.jce.provider.BouncyCastleProvider;
+                                    ^
+/home/robert.ctr.sherwood/Projects/acmetpm/src/main/java/gov/dot/faa/ang/idms/acmetpm/tpmcrypto/TpmProvider.java:46: error: package org.bouncycastle.operator does not exist
+import org.bouncycastle.operator.OperatorCreationException;
+                                ^
+/home/robert.ctr.sherwood/Projects/acmetpm/src/main/java/gov/dot/faa/ang/idms/acmetpm/tpmcrypto/TpmProvider.java:47: error: package org.bouncycastle.operator.jcajce does not exist
+import org.bouncycastle.operator.jcajce.JcaContentSignerBuilder;
+                                       ^
+/home/robert.ctr.sherwood/Projects/acmetpm/src/main/java/gov/dot/faa/ang/idms/acmetpm/tpmcrypto/TpmProvider.java:48: error: package org.bouncycastle.asn1.x509 does not exist
+import org.bouncycastle.asn1.x509.SubjectPublicKeyInfo;
+                                 ^
+/home/robert.ctr.sherwood/Projects/acmetpm/src/main/java/gov/dot/faa/ang/idms/acmetpm/tpmcrypto/TpmProvider.java:50: error: package org.slf4j does not exist
+import org.slf4j.Logger;
+                ^
+/home/robert.ctr.sherwood/Projects/acmetpm/src/main/java/gov/dot/faa/ang/idms/acmetpm/tpmcrypto/TpmProvider.java:51: error: package org.slf4j does not exist
+import org.slf4j.LoggerFactory;
+                ^
+/home/robert.ctr.sherwood/Projects/acmetpm/src/main/java/gov/dot/faa/ang/idms/acmetpm/tpmcrypto/TpmProvider.java:63: error: cannot find symbol
+    private static final Logger logger = LoggerFactory.getLogger(TpmProvider.class);
+                         ^
+  symbol:   class Logger
+  location: class TpmProvider
+/home/robert.ctr.sherwood/Projects/acmetpm/src/main/java/gov/dot/faa/ang/idms/acmetpm/tpmcrypto/TpmProvider.java:186: error: cannot find symbol
+    private void updateCertificate(String alias, X509CertificateHolder certHolder) {
+                                                 ^
+  symbol:   class X509CertificateHolder
+  location: class TpmProvider
+/home/robert.ctr.sherwood/Projects/acmetpm/src/main/java/gov/dot/faa/ang/idms/acmetpm/acme/EjbcaHttpConnector.java:9: error: package org.shredzone.acme4j.connector does not exist
+import org.shredzone.acme4j.connector.HttpConnector;
+                                     ^
+/home/robert.ctr.sherwood/Projects/acmetpm/src/main/java/gov/dot/faa/ang/idms/acmetpm/acme/EjbcaHttpConnector.java:10: error: package org.shredzone.acme4j.connector does not exist
+import org.shredzone.acme4j.connector.NetworkSettings;
+                                     ^
+/home/robert.ctr.sherwood/Projects/acmetpm/src/main/java/gov/dot/faa/ang/idms/acmetpm/acme/EjbcaHttpConnector.java:15: error: cannot find symbol
+public class EjbcaHttpConnector extends HttpConnector {
+                                        ^
+  symbol: class HttpConnector
+/home/robert.ctr.sherwood/Projects/acmetpm/src/main/java/gov/dot/faa/ang/idms/acmetpm/acme/EjbcaHttpConnector.java:18: error: cannot find symbol
+    public EjbcaHttpConnector(NetworkSettings settings) {
+                              ^
+  symbol:   class NetworkSettings
+  location: class EjbcaHttpConnector
+/home/robert.ctr.sherwood/Projects/acmetpm/src/main/java/gov/dot/faa/ang/idms/acmetpm/acme/IdmsAcmeProvider.java:3: error: package org.shredzone.acme4j.provider does not exist
+import org.shredzone.acme4j.provider.AbstractAcmeProvider;
+                                    ^
+/home/robert.ctr.sherwood/Projects/acmetpm/src/main/java/gov/dot/faa/ang/idms/acmetpm/acme/IdmsAcmeProvider.java:9: error: package org.shredzone.acme4j.connector does not exist
+import org.shredzone.acme4j.connector.HttpConnector;
+                                     ^
+/home/robert.ctr.sherwood/Projects/acmetpm/src/main/java/gov/dot/faa/ang/idms/acmetpm/acme/IdmsAcmeProvider.java:10: error: package org.shredzone.acme4j.connector does not exist
+import org.shredzone.acme4j.connector.NetworkSettings;
+                                     ^
+/home/robert.ctr.sherwood/Projects/acmetpm/src/main/java/gov/dot/faa/ang/idms/acmetpm/acme/IdmsAcmeProvider.java:11: error: package org.shredzone.acme4j.exception does not exist
+import org.shredzone.acme4j.exception.AcmeProtocolException;
+                                     ^
+/home/robert.ctr.sherwood/Projects/acmetpm/src/main/java/gov/dot/faa/ang/idms/acmetpm/acme/IdmsAcmeProvider.java:13: error: cannot find symbol
+public class IdmsAcmeProvider extends AbstractAcmeProvider {
+                                      ^
+  symbol: class AbstractAcmeProvider
+/home/robert.ctr.sherwood/Projects/acmetpm/src/main/java/gov/dot/faa/ang/idms/acmetpm/acme/IdmsAcmeProvider.java:40: error: cannot find symbol
+    protected HttpConnector createHttpConnector(NetworkSettings settings) {
+                                                ^
+  symbol:   class NetworkSettings
+  location: class IdmsAcmeProvider
+/home/robert.ctr.sherwood/Projects/acmetpm/src/main/java/gov/dot/faa/ang/idms/acmetpm/acme/IdmsAcmeProvider.java:40: error: cannot find symbol
+    protected HttpConnector createHttpConnector(NetworkSettings settings) {
+              ^
+  symbol:   class HttpConnector
+  location: class IdmsAcmeProvider
+/home/robert.ctr.sherwood/Projects/acmetpm/src/main/java/gov/dot/faa/ang/idms/acmetpm/apacheconfig/ApacheConfigReader.java:5: error: package net.augeas does not exist
+import net.augeas.Augeas;
+                 ^
+/home/robert.ctr.sherwood/Projects/acmetpm/src/main/java/gov/dot/faa/ang/idms/acmetpm/apacheconfig/ApacheConfigReader.java:15: error: cannot find symbol
+    private Augeas augInstance;
+            ^
+  symbol:   class Augeas
+  location: class ApacheConfigReader
+/home/robert.ctr.sherwood/Projects/acmetpm/src/test/java/gov/dot/faa/ang/idms/AppTest.java:3: error: package org.junit.jupiter.api does not exist
+import org.junit.jupiter.api.Test;
+                            ^
+/home/robert.ctr.sherwood/Projects/acmetpm/src/test/java/gov/dot/faa/ang/idms/AppTest.java:5: error: package org.junit.jupiter.api does not exist
+import static org.junit.jupiter.api.Assertions.assertEquals;
+                                   ^
+/home/robert.ctr.sherwood/Projects/acmetpm/src/test/java/gov/dot/faa/ang/idms/AppTest.java:5: error: static import only from classes and interfaces
+import static org.junit.jupiter.api.Assertions.assertEquals;
+^
+/home/robert.ctr.sherwood/Projects/acmetpm/src/test/java/gov/dot/faa/ang/idms/AppTest.java:14: error: cannot find symbol
+    @Test
+     ^
+  symbol:   class Test
+  location: class AppTest
+34 errors
+
+

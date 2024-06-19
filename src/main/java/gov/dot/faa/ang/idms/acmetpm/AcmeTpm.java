@@ -1,12 +1,19 @@
 package gov.dot.faa.ang.idms.acmetpm;
 
+import java.net.URI;
+import java.net.URISyntaxException;
 import java.nio.file.FileSystems;
 import java.nio.file.Path;
-import java.security.KeyStore;
+import java.security.KeyPair;
 
+import org.shredzone.acme4j.Session;
+import org.shredzone.acme4j.provider.AcmeProvider;
+
+import gov.dot.faa.ang.idms.acmetpm.acme.IdmsAcmeProvider;
+import gov.dot.faa.ang.idms.acmetpm.tpmcrypto.TpmProvider;
 
 /**
- * Wraps calls to the EJBCA Rest API.
+ * Wraps calls to the EJBCA ACME API, leveraging TPM Backed private keys and updating the apache configuration
  *
  * @author robert.sherwood@credentive.com
  */
@@ -19,14 +26,19 @@ public class AcmeTpm {
 
     public static final String CLIENT_KEY_STORE_PIN = "userpin";
 
+    private static final String CA_URI = "acme://example.com/staging";
+
     public static String[] EJBCA_SERVERS;
     public static PropLoader props;
     public static String tokenPassword;
+    public TpmProvider tpmProvider;
+
 
     public AcmeTpm(String server, String domain) {
         // Verify the properties file
         try {
-        props = new PropLoader(PROPS_FILE);
+            props = new PropLoader(PROPS_FILE);
+            tokenPassword = props.getTokenPassword();
         } catch (AcmeTpmException ex) {
             System.out.println(ex);
             System.exit(1);
@@ -34,29 +46,35 @@ public class AcmeTpm {
 
         // Load the TPM Keystore
         try {
-            tokenPassword = props.getTokenPassword();
-        } catch (AcmeTpmException e) {
+            tpmProvider = new TpmProvider(CLIENT_KEY_STORE_PIN);
+        } catch (Exception e) {
             System.out.println(e);
             System.exit(1);
         }
 
-        // Get the user Key
+        KeyPair domainKeys;
+        // Get or create key for requested domain
         try {
-            
-        } catch (Exception e) {
-            // TODO: handle exception
+            domainKeys = tpmProvider.getDomainKeyPair(domain);
+        } catch (AcmeTpmException e) {
+            System.out.println(e.getLocalizedMessage());
+            System.exit(1);
         }
 
-
-
-
-
-
-        
-
         // Create a Session with the EJBCA Server
+        URI caUri=null; 
+        try {
+            caUri = new URI(CA_URI);
+        } catch (URISyntaxException e) {
+            System.out.println(e);
+            System.exit(1);
+        }
 
-
+        Session session;
+        AcmeProvider idmsProvider = new IdmsAcmeProvider();
+        if (caUri != null) {
+            session = new Session(caUri, idmsProvider);
+        }
         // Look for a KeyPair associated with the domain, if none exists, create one.
 
         // call the custom proxy to confirm everything is in place
