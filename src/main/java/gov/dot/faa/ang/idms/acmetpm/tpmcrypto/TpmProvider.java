@@ -4,13 +4,14 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
-import java.lang.String;
 import java.math.BigInteger;
 import java.security.InvalidAlgorithmParameterException;
 import java.security.KeyManagementException;
 import java.security.KeyPair;
 import java.security.KeyPairGenerator;
 import java.security.KeyStore;
+import java.security.KeyStore.PasswordProtection;
+import java.security.KeyStore.PrivateKeyEntry;
 import java.security.KeyStoreException;
 import java.security.NoSuchAlgorithmException;
 import java.security.PrivateKey;
@@ -20,14 +21,11 @@ import java.security.SecureRandom;
 import java.security.Security;
 import java.security.UnrecoverableEntryException;
 import java.security.UnrecoverableKeyException;
-import java.security.KeyStore.PasswordProtection;
-import java.security.KeyStore.PrivateKeyEntry;
 import java.security.cert.CertificateException;
 import java.security.cert.X509Certificate;
 import java.security.spec.ECGenParameterSpec;
 import java.time.Duration;
 import java.time.Instant;
-
 import java.util.Date;
 
 import javax.net.ssl.KeyManager;
@@ -39,14 +37,13 @@ import javax.net.ssl.TrustManagerFactory;
 import org.bouncycastle.asn1.x500.X500Name;
 import org.bouncycastle.asn1.x500.X500NameBuilder;
 import org.bouncycastle.asn1.x500.style.BCStyle;
+import org.bouncycastle.asn1.x509.SubjectPublicKeyInfo;
 import org.bouncycastle.cert.X509CertificateHolder;
 import org.bouncycastle.cert.X509v3CertificateBuilder;
 import org.bouncycastle.cert.jcajce.JcaX509CertificateConverter;
 import org.bouncycastle.jce.provider.BouncyCastleProvider;
 import org.bouncycastle.operator.OperatorCreationException;
 import org.bouncycastle.operator.jcajce.JcaContentSignerBuilder;
-import org.bouncycastle.asn1.x509.SubjectPublicKeyInfo;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -60,6 +57,7 @@ import gov.dot.faa.ang.idms.acmetpm.AcmeTpmException;
  * 
  */
 public class TpmProvider {
+
     private static final Logger logger = LoggerFactory.getLogger(TpmProvider.class);
     private static final String TPM_PKCS11_CONFIG = AcmeTpm.TPM_JCA_CONFIG.toString();
     private static final String KEYPAIR_ALGORITHM = "EC";
@@ -73,6 +71,13 @@ public class TpmProvider {
     private KeyStore tpmKeyStore;
     private KeyPair userKeyPair;
 
+    /**
+     * This class encapsulates the behavior of the TPM backed PKCS11 token and
+     * provides utility functions for key and certificate management.
+     *
+     * @param tokenPassword The user PIN or password to unlock the token.
+     * @throws AcmeTpmException
+     */
     public TpmProvider(String tokenPassword) throws AcmeTpmException {
         try {
             logger.debug("Intializing Token Provider");
@@ -90,6 +95,14 @@ public class TpmProvider {
         }
     }
 
+    /**
+     * getUserKeyPair returns the keypair for the user. It will load and/or
+     * create the keypair if it does not exist, so it is guaranteed to return a
+     * keypair or raise an Exception.
+     *
+     * @return The KeyPair associated with the user account on the ACME server.
+     * @throws AcmeTpmException
+     */
     public KeyPair getUserKeyPair() throws AcmeTpmException {
         if (this.userKeyPair != null) {
             logger.debug("userKeyPair already loaded, returning from Memory");
@@ -120,6 +133,14 @@ public class TpmProvider {
         }
     }
 
+    /**
+     * Returns the key pair corresponding to a hostname for this server. It will create the keypair if it doesn't exist.
+     * Guaranteed to return a keypair or throw an error.
+     * 
+     * @param domain the dns name for the host
+     * @return The keypair for that domain if it exists in the keystore
+     * @throws AcmeTpmException if the attempt to retrieve or create the keypair fails
+     */
     public KeyPair getDomainKeyPair(String domain) throws AcmeTpmException {
         logger.debug("Calling getDomainKeyPair for {}", domain);
         try {
@@ -143,6 +164,40 @@ public class TpmProvider {
         }
     }
 
+    /**
+     * Returns an SSLContext for the TpmProvider. Used for client authenticated SSL connections to the ACME server
+     * 
+     * @return an SSL context which will leverage the TPM backed keys.
+     * @throws AcmeTpmException if the SSL Context cannot be created
+     */
+    public SSLContext getSSLContext() throws AcmeTpmException {
+        logger.info("Loading Client Keystore using PKCS11, with config {}", TPM_PKCS11_CONFIG);
+        try {
+            SSLContext sslContext = SSLContext.getInstance("TLSv1.3");
+            KeyManagerFactory kmf = KeyManagerFactory.getInstance(KeyManagerFactory.getDefaultAlgorithm());
+            kmf.init(this.tpmKeyStore, AcmeTpm.CLIENT_KEY_STORE_PIN.toCharArray());
+            KeyManager[] keyManagers = kmf.getKeyManagers();
+            logger.info("Loaded {} key managers", keyManagers.length);
+
+            KeyStore trustStore = getTrustStore();
+
+            TrustManagerFactory tmf = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm());
+            tmf.init(trustStore);
+            TrustManager[] trustManagers = tmf.getTrustManagers();
+
+            sslContext.init(keyManagers, trustManagers, new java.security.SecureRandom());
+            return sslContext;
+        } catch (AcmeTpmException | KeyManagementException | KeyStoreException
+                | NoSuchAlgorithmException | UnrecoverableKeyException e) {
+            throw new AcmeTpmException(e.getMessage());
+        }
+    }
+
+    /**
+     * private class to create a keypair in the virtual token
+     * @return a KeyPair
+     * @throws AcmeTpmException
+     */
     private KeyPair newKeyPair() throws AcmeTpmException {
         KeyPairGenerator kpGen;
         try {
@@ -157,6 +212,12 @@ public class TpmProvider {
 
     }
 
+    /**
+     * Stores a keypair in the TPM backed token. Generates a self-signed certificate which shouldn't be used. 
+     * @param alias the desired alias for the keypair this should be either the USER_ALIAS, or the domain name identifying the web server or certificates.
+     * @param keyPair the keypair to store
+     * @throws AcmeTpmException if the storage of the keypair fails.
+     */
     private void storeKeyPair(String alias, KeyPair keyPair) throws AcmeTpmException {
         try {
             if (this.tpmKeyStore.containsAlias(alias)) {
@@ -183,12 +244,22 @@ public class TpmProvider {
         }
     }
 
+    /**
+     * This function is called when an updated certificate is obtained from the ACME server. It update the keypair in the token
+     * @param alias the alias of the keypair to update
+     * @param certHolder a certificateHolder object to be converted into a certificate and stored in the token.
+     */
     private void updateCertificate(String alias, X509CertificateHolder certHolder) {
         // Accept a certificate and update the pkcs11 store with the cert in the right
         // alias
 
     }
 
+    /**
+     * gets the Trust store containing the Issuing CA Certificates. Used by getSSLContext.
+     * @return the Keystore representing the trust store containing the CA public key certificates
+     * @throws AcmeTpmException if the keystore does not exist or cannot be loaded.
+     */
     private KeyStore getTrustStore() throws AcmeTpmException {
         KeyStore keystore;
         try {
@@ -207,27 +278,6 @@ public class TpmProvider {
         return keystore;
     }
 
-    public SSLContext getSSLContext() throws AcmeTpmException {
-        logger.info("Loading Client Keystore using PKCS11, with config {}", TPM_PKCS11_CONFIG);
-        try {
-            SSLContext sslContext = SSLContext.getInstance("TLSv1.3");
-            KeyManagerFactory kmf = KeyManagerFactory.getInstance(KeyManagerFactory.getDefaultAlgorithm());
-            kmf.init(this.tpmKeyStore, AcmeTpm.CLIENT_KEY_STORE_PIN.toCharArray());
-            KeyManager[] keyManagers = kmf.getKeyManagers();
-            logger.info("Loaded {} key managers", keyManagers.length);
 
-            KeyStore trustStore = getTrustStore();
-
-            TrustManagerFactory tmf = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm());
-            tmf.init(trustStore);
-            TrustManager[] trustManagers = tmf.getTrustManagers();
-
-            sslContext.init(keyManagers, trustManagers, new java.security.SecureRandom());
-            return sslContext;
-        } catch (AcmeTpmException | KeyManagementException | KeyStoreException
-                | NoSuchAlgorithmException | UnrecoverableKeyException e) {
-            throw new AcmeTpmException(e.getMessage());
-        }
-    }
 
 }
