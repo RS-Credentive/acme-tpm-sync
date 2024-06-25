@@ -33,16 +33,16 @@ public class UtilPKCS11 {
         if (acmeSlotID != 0) {
             pathElements = getPKCS11PathElements(keyIDString);
         } else {
-            throw new AcmeTpmException("Unable to find token for acme. Expecting label " + label + ".");
+            throw new AcmeTpmException("Unable to find token for acme. Expecting label " + this.label + ".");
         }
     }
 
     /**
      * Return the pkcs11 path URLs for the keypair
-     * @param keyID
-     * @return
+     * 
+     * @return properly formatted pkcs11 paths to include in apache configuration files
      */
-    public HashMap<String,String> getPaths(String keyID) {
+    public HashMap<String,String> getPaths() {
         // configMap.put(apachePrivKeyConfigKey, pkcs11KeyPath);
         // configMap.put(apacheCertConfigKey, pkcs11CertPath);
         HashMap<String, String> paths = new HashMap<>();
@@ -56,7 +56,7 @@ public class UtilPKCS11 {
         keyPathBuilder.append("token=" + pathElements.get("token") + ";");
         keyPathBuilder.append("id=" + pathElements.get("id") + ";");
         keyPathBuilder.append("type=" + pathElements.get("keyType"));
-        paths.put("apachePrivKeyConfigKey", keyPathBuilder.toString());
+        paths.put("SSLCertificateKeyFile", keyPathBuilder.toString());
 
 
         // Build certPath
@@ -69,7 +69,7 @@ public class UtilPKCS11 {
         certPathBuilder.append("id=" + pathElements.get("id") + ";");
         certPathBuilder.append("object=" + pathElements.get("object") + ";");
         certPathBuilder.append("type=" + pathElements.get("certType"));
-        paths.put("apacheCertConfigKey", certPathBuilder.toString());
+        paths.put("SSLCertificateFile", certPathBuilder.toString());
 
         return paths;
 
@@ -95,7 +95,7 @@ public class UtilPKCS11 {
 
         // ID is the the numeric hex of the keyID with "%" before each character.
         HexFormat idFormat = HexFormat.ofDelimiter("%");
-        String hexString = "%" + idFormat.formatHex("userKeyPair".getBytes());
+        String hexString = "%" + idFormat.formatHex(keyID.getBytes());
         pathElements.put("id", hexString);
 
         // Some static strings
