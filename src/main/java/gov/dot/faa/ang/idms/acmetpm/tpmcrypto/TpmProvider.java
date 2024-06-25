@@ -27,6 +27,7 @@ import java.security.spec.ECGenParameterSpec;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Date;
+import java.util.HashMap;
 
 import javax.net.ssl.KeyManager;
 import javax.net.ssl.KeyManagerFactory;
@@ -44,6 +45,7 @@ import org.bouncycastle.cert.jcajce.JcaX509CertificateConverter;
 import org.bouncycastle.jce.provider.BouncyCastleProvider;
 import org.bouncycastle.operator.OperatorCreationException;
 import org.bouncycastle.operator.jcajce.JcaContentSignerBuilder;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -162,6 +164,19 @@ public class TpmProvider {
         } catch (Exception e) {
             throw new AcmeTpmException(e.getMessage());
         }
+    }
+
+    /**
+     * Returns the pkcs11 paths for a private key and certificate pair stored in the TPM backed token
+     * @param The domain name corresponding the the keypair alias
+     * @return a Hashmap containing the private and public pkcs11 paths for the private and public keys.
+     */
+    public HashMap<String, String> getPathsForTpmObjects(String domain) throws AcmeTpmException {
+        // Initialize the PKCS11 utility
+        var pkcs11Util = new UtilPKCS11(domain);
+
+        // Get the pkcs11 paths
+        return pkcs11Util.getPaths();
     }
 
     /**
