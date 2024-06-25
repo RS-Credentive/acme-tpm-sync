@@ -14,9 +14,9 @@ public class ApacheConfigReader {
     private static final String DEFAULT_CONFIG_ROOT = "/etc/httpd"; // This should be a property.
     private static final String AUGEAS_ROOT = "/files" + DEFAULT_CONFIG_ROOT;
     private static final String SSL_LOAD_MODULE_PATH = AUGEAS_ROOT +
-            "//directive[. =~ regexp(\"LoadModule.*\")][arg = \"ssl_module\"]";
+        "//directive[. =~ regexp(\"LoadModule.*\")][arg = \"ssl_module\"]";
     private static final String VIRT_HOST_LIST_PATH = AUGEAS_ROOT + 
-            "//VirtualHost/directive[\"SSLEngine\"]/arg[\"on\"]/../../arg";
+        "//VirtualHost/directive[\"SSLEngine\"]/arg[\"on\"]/../../arg";
     private static final String SSL_SERVER_CERT_PATH = AUGEAS_ROOT + 
         "//VirtualHost[arg = \"{{VHOST}}\"]/directive[\"SSLCertificateFile\"]/arg";
     private static final String SSL_PRIVATE_KEY_PATH = AUGEAS_ROOT + 
