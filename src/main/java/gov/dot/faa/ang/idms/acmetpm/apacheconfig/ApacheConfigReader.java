@@ -47,7 +47,7 @@ public class ApacheConfigReader {
 
         // for each of the vHosts, get the key/certificate paths from the config
         for (String host: vHostList) {
-            configs.put(host, getConfigForHost(host));
+            this.configs.put(host, getConfigForHost(host));
         }
 
     }
@@ -57,7 +57,7 @@ public class ApacheConfigReader {
      * @return Set<String> containing a list of Virtual Host ids 
      */
     public Set<String> getVHosts() {
-        return configs.keySet();
+        return this.configs.keySet();
     }
 
     /**
@@ -66,7 +66,7 @@ public class ApacheConfigReader {
      * @return true if the host is configured, false if not
      */
     public boolean vHostExists(String vHost) {
-        return configs.containsKey(vHost);
+        return this.configs.containsKey(vHost);
     }
 
     /**
@@ -75,7 +75,7 @@ public class ApacheConfigReader {
      * @return the location of the private key from the configuration file
      */
     public final String getKeyLocationForVHost(String vHost) {
-        return configs.get(vHost).sslPrivateKeyPath;
+        return this.configs.get(vHost).sslPrivateKeyPath;
     }
 
     /**
@@ -84,7 +84,7 @@ public class ApacheConfigReader {
      * @return the location of the public key certificate from the configuration file
      */
     public final String getCertLocationforVHost(String vHost) {
-        return configs.get(vHost).sslCertificatePath;
+        return this.configs.get(vHost).sslCertificatePath;
     }
 
     /**
