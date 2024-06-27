@@ -9,7 +9,7 @@ import java.util.HashMap;
 
 public class PropLoader {
     public static HashMap<String,String> props = new HashMap<String,String>();
-    private static Path propFileLocation = Path.of(""); // What is this?
+    private static Path propFileLocation = Path.of(""); // What should this be?
 
     public PropLoader() throws AcmeTpmException {
         if (props.size() == 0) {
