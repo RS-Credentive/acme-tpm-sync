@@ -22,7 +22,6 @@ public class AcmeTpm {
             "acmetpm");
     public static final Path TPM_JCA_CONFIG = BASEPATH.resolve("acmetpm.conf");
     public static final Path EJBCA_TRUSTSTORE = BASEPATH.resolve("idmsTrustStore.p12");
-    public static final Path PROPS_FILE = BASEPATH.resolve("acmetpm.properties");
 
     public static final String CLIENT_KEY_STORE_PIN = "userpin";
 
@@ -37,7 +36,7 @@ public class AcmeTpm {
     public AcmeTpm(String server, String domain) {
         // Verify the properties file
         try {
-            props = new PropLoader(PROPS_FILE);
+            props = new PropLoader();
             tokenPassword = props.getTokenPassword();
         } catch (AcmeTpmException ex) {
             System.out.println(ex);
