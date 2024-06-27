@@ -1,5 +1,6 @@
 package gov.dot.faa.ang.idms.acmetpm.tpmcrypto;
 
+import java.io.ByteArrayInputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
@@ -22,10 +23,13 @@ import java.security.Security;
 import java.security.UnrecoverableEntryException;
 import java.security.UnrecoverableKeyException;
 import java.security.cert.CertificateException;
+import java.security.cert.CertificateFactory;
 import java.security.cert.X509Certificate;
+import java.security.cert.Certificate;
 import java.security.spec.ECGenParameterSpec;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.Date;
 import java.util.HashMap;
 
@@ -132,6 +136,61 @@ public class TpmProvider {
             } catch (KeyStoreException | UnrecoverableEntryException | NoSuchAlgorithmException e) {
                 throw new AcmeTpmException(e.getMessage());
             }
+        }
+    }
+
+    /**
+     * Returns a list of all domains managed in the TPM.
+     * @return ArrayList<String>
+     * @throws AcmeTpmException
+     */
+    public ArrayList<String> getDomains() throws AcmeTpmException {
+        try {
+            var domains = new ArrayList<String>();
+            var domainEnum = this.tpmKeyStore.aliases();
+            while (domainEnum.hasMoreElements()) {
+                var nextDomain = domainEnum.nextElement();
+                if (nextDomain.equals("userKeyPair")) {
+                } else {
+                    domains.add(nextDomain);
+                }
+            }
+            return domains;
+        } catch (KeyStoreException e) {
+            throw new AcmeTpmException("Error enumerating key aliases: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Returns true if the domain is managed in the TPM backed token, or false if it is not. We check for the domain in the list of keystor aliases.
+     * @param String representing the domain name for the managed key
+     * @return true if the keystore contains the alias, false if it does not.
+     * @throws AcmeTpmException
+     */
+    public boolean isManagedDomain(String domain) throws AcmeTpmException {
+        try {
+            return this.tpmKeyStore.containsAlias(domain);
+        } catch (KeyStoreException e) {
+            throw new AcmeTpmException("Unable to check for managed domain " + domain + ". Error: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Parses the certificate associated with a managed domain and returns the expiration date.
+     * @param domain to check
+     * @return Date object corresponding to the certificate's expiration date.
+     * @throws AcmeTpmException
+     */
+    public Date domainCertExpiration(String domain) throws AcmeTpmException {
+        if (isManagedDomain(domain)) {
+            try {                
+                X509Certificate domainCert = (X509Certificate)this.tpmKeyStore.getCertificate(domain);
+                return domainCert.getNotAfter();
+            } catch (KeyStoreException e) {
+                throw new AcmeTpmException("Error attempting to determine expiration date for " + domain + ": " + e.getMessage());
+            }
+        } else {
+            throw new AcmeTpmException(domain + " is not a managed domain.");
         }
     }
 
@@ -291,6 +350,21 @@ public class TpmProvider {
             throw new AcmeTpmException(e.getMessage());
         }
         return keystore;
+    }
+
+    public HashMap<String, String> getKeyInfo(String domainString) throws AcmeTpmException {
+        try {
+            var keyInfoHashMap = new HashMap<String, String>();
+            if (this.tpmKeyStore.containsAlias(domainString)) {
+                this.tpmKeyStore.getCreationDate(domainString);
+                keyInfoHashMap.put("keySize", domainString);
+                return keyInfoHashMap;
+            } else {
+                throw new AcmeTpmException(domainString + "  is not a managed domain.");
+            }
+        } catch (KeyStoreException e) {
+            throw new AcmeTpmException("Unable to access key for " + domainString + ": " + e.getMessage());
+        }
     }
 
 
