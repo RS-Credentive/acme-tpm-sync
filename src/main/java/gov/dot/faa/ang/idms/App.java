@@ -39,17 +39,25 @@ class App implements Callable<Integer> {
     static final int FAIL = 1;
     static final int SUCCESS = 0;
 
+    /**
+     * Function called by main to run the command. Checks to see if "--help" or "-h" was called and return help message, 
+     * otherwise calls processCommand() to do something
+     * @return 
+     */
     @Override
     public Integer call() throws Exception {
         if (printHelp) {
-            printHelp();
-            return SUCCESS;
+            return printHelp();
         } else {
             return processCommand();
         }
 
     }
 
+    /**
+     * process the commands directives passed in on the command line, and dispatch to the appropriate method
+     * @return SUCCESS(0) or FAIL(0) as returned by the underlying method
+     */
     private int processCommand() {
         switch (commandString) {
             case "help":
@@ -79,8 +87,12 @@ class App implements Callable<Integer> {
         }
     }
 
-    // Command Functions
+    // Functions implementing command options
 
+    /**
+     * Prints a help message to the screen
+     * @return SUCCESS(0)
+     */
     private int printHelp() {
         // Note this function is called if the command "help" is entered, or if any
         // command is passed the "--help" switch, so figure it out and do the right
@@ -89,6 +101,10 @@ class App implements Callable<Integer> {
         return SUCCESS;
     }
 
+    /**
+     * Print a list of managed domains, or a message indicating that no domains are registered.
+     * @return SUCCESS(0) if we were able to get a list, or FAIL(0) if we weren't able to get a list
+     */
     private int listDomains() {
         try {
             var managedDomains = getManagedDomains();
@@ -108,6 +124,11 @@ class App implements Callable<Integer> {
         return SUCCESS;
     }
 
+    /**
+     * Print information for all domains under management. Calls getManagedDomains and then calls printDomainInfo for
+     * each domain
+     * @return SUCCESS(0) if able to print info or FAIL(1) if an exception is raised while trying.
+     */
     private int printAllInfo() {
         try {
             for (String domain : getManagedDomains()) {
@@ -121,6 +142,11 @@ class App implements Callable<Integer> {
         return SUCCESS;
     }
 
+    /**
+     * Prints information about the keypairs and certificats for one of the domains under management
+     * @param domainString - a string representing a domain, usually a hostname
+     * @return SUCCESS(0) if able to print info or FAIL(1) if an exception is raised while trying.
+     */
     private int printDomainInfo(String domainString) {
         try {
             if (tpmProvider.isManagedDomain(domainString)) {
@@ -140,6 +166,11 @@ class App implements Callable<Integer> {
         }
     }
 
+    /**
+     * print a list of domains that will expire before the date provided
+     * @param expirationDate - the expiration date to compare the domain certificates against
+     * @return SUCCESS(0) if able to print expiring domains or FAIL(1) if an exception is raised while trying.
+     */
     private int getExpiringDomains(Date expirationDate) {
         // if expiration date is not set, set it to the default configured in properties
         try {
@@ -153,7 +184,7 @@ class App implements Callable<Integer> {
             return FAIL;
         }
 
-        // Populate hashmap with {doma}
+        // Populate hashmap with "domain" : certificate expiration date
         var notAfterHashMap = new HashMap<String, Date>();
         try {
             var domains = tpmProvider.getDomains();
@@ -180,6 +211,11 @@ class App implements Callable<Integer> {
         return SUCCESS;
     }
 
+    /**
+     * Add a domain to the list of managed domains. This does not automatically request a certificate for the domain
+     * @param domain - domain identifier to add (usually hostname)
+     * @return SUCCESS(0) if able to add domain or FAIL(1) if an exception is raised while trying.
+     */
     private static int addDomain(String domain) {
         try {
             var tpmProvider = new TpmProvider(props.getProp("token.password"));
@@ -193,6 +229,12 @@ class App implements Callable<Integer> {
     }
 
     // Shared utility functions
+
+    /**
+     * Get a list of all managed domains 
+     * @return an ArrayList<String> with all managed domains (may be an empty arraylist)
+     * @throws AcmeTpmException
+     */
     private static ArrayList<String> getManagedDomains() throws AcmeTpmException {
         TpmProvider tpmProvider = new TpmProvider(props.getProp("token.password"));
         return tpmProvider.getDomains();
@@ -200,6 +242,10 @@ class App implements Callable<Integer> {
 
     
 
+    /**
+     * main
+     * @param args
+     */
     public static void main(String[] args) {
         try {
             props = new PropLoader();
