@@ -73,11 +73,14 @@ class App implements Callable<Integer> {
                     return printDomainInfo(domain);
                 }
 
-            case "getExpiring":
+            case "listexpiring":
                 return getExpiringDomains(expirationDate);
             
-            case "addDomain":
+            case "add":
                 return addDomain(domain);
+
+            case "delete":
+                return deleteDomain(domain);
             
 
             default:
@@ -226,6 +229,16 @@ class App implements Callable<Integer> {
             System.err.println("Unable to add " + domain + " to managed Domains: " + e.getMessage());
             return FAIL;
         }
+    }
+
+    /**
+     * Deletes a domain from the list of managed domains. This does not automatically revoke the certificate for the domain
+     * @param domain
+     * @return
+     */
+    private int deleteDomain(String domain) {
+        // TODO Auto-generated method stub
+        throw new UnsupportedOperationException("Unimplemented method 'deleteDomain'");
     }
 
     // Shared utility functions
