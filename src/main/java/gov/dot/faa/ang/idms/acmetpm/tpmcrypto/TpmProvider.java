@@ -287,7 +287,7 @@ public class TpmProvider {
     }
 
     /**
-     * Stores a keypair in the TPM backed token. Generates a self-signed certificate which shouldn't be used. 
+     * Stores a keypair in the TPM backed token. Generates a self-signed certificate which shouldn't be used for real.
      * @param alias the desired alias for the keypair this should be either the USER_ALIAS, or the domain name identifying the web server or certificates.
      * @param keyPair the keypair to store
      * @throws AcmeTpmException if the storage of the keypair fails.
