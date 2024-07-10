@@ -23,6 +23,7 @@ public class PropLoader {
         props.put("token.label", "label");
         props.put("token.password", "myuserpin");
         props.put("token.libraryPath", "/usr/lib64/pkcs11/libtpm2_pkcs11.so");
+        props.put("domains.renewalLimit", "90");
     }
 
     private static void initialize(Path propFile) throws AcmeTpmException {
