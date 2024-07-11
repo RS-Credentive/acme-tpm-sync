@@ -43,13 +43,23 @@ All commands accept an optional "--help" flag which will provide more details ab
 
 This command lists provides usage information about the command. It is equivalent to "acmetpm --help"
 
+## acmetpm userinit
+
+This command creates the user key pair if it does not exist, and outputs a certificate signing request. By default it reuses an existing private key.
+
+*Example: acmetpm userinit*
+
+The optional '--rekey' or '-r' flag generates a new key pair, replacing the existing keys.
+
+*Example: acmetpm userinit --rekey*
+
 ## acmetpm list
 
 This command lists all domains managed by acmetpm
 
 ## acmetpm info
 
-This comman provides information about keys and certificats associated with domains managed by acmetpm.
+This comman provides information about keys and certificates associated with domains managed by acmetpm.
 
 *Example: acmetpm info*
 
