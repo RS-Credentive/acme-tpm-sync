@@ -1,10 +1,6 @@
 package gov.dot.faa.ang.idms.acmetpm;
 
-import java.io.IOException;
-import java.io.InputStream;
-import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.Properties;
 import java.util.HashMap;
 
 public class PropLoader {
@@ -20,10 +16,13 @@ public class PropLoader {
     private static final void fakeInitialize() {
         // This is a fake method so I can use the PropLoader before determining the file location and other stuff
         props.put("ejbca.addresses", "10.23.4.193|10.27.33.94|10.22.65.8|10.22.65.4");
+        props.put("ejbca.acme_uri", "https://10.22.65.12/ejbca/acme/")
         props.put("token.label", "label");
         props.put("token.password", "myuserpin");
         props.put("token.libraryPath", "/usr/lib64/pkcs11/libtpm2_pkcs11.so");
         props.put("domains.renewalLimit", "90");
+        props.put("token.userAlias","userKeyPair");
+        props.put("token.truststore", "")
     }
 
     private static void initialize(Path propFile) throws AcmeTpmException {

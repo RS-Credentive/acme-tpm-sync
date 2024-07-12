@@ -1,6 +1,5 @@
 package gov.dot.faa.ang.idms.acmetpm.tpmcrypto;
 
-import java.io.ByteArrayInputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
@@ -23,9 +22,7 @@ import java.security.Security;
 import java.security.UnrecoverableEntryException;
 import java.security.UnrecoverableKeyException;
 import java.security.cert.CertificateException;
-import java.security.cert.CertificateFactory;
 import java.security.cert.X509Certificate;
-import java.security.cert.Certificate;
 import java.security.spec.ECGenParameterSpec;
 import java.time.Duration;
 import java.time.Instant;
@@ -337,7 +334,7 @@ public class TpmProvider {
     private KeyStore getTrustStore() throws AcmeTpmException {
         KeyStore keystore;
         try {
-            String trustStorePassword = AcmeTpm.CLIENT_KEY_STORE_PIN;
+            String trustStorePassword = AcmeTpm.tokenPassword;
             keystore = KeyStore.getInstance("PKCS12");
 
             final File keystoreFile = AcmeTpm.EJBCA_TRUSTSTORE.toFile();
@@ -352,6 +349,12 @@ public class TpmProvider {
         return keystore;
     }
 
+    /**
+     * Returns information related to keys 
+     * @param domainString
+     * @return
+     * @throws AcmeTpmException
+     */
     public HashMap<String, String> getKeyInfo(String domainString) throws AcmeTpmException {
         try {
             var keyInfoHashMap = new HashMap<String, String>();
