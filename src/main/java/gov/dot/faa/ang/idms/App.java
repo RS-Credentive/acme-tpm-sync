@@ -1,12 +1,10 @@
 package gov.dot.faa.ang.idms;
 
+import gov.dot.faa.ang.idms.acmetpm.AcmeTpm;
 import gov.dot.faa.ang.idms.acmetpm.AcmeTpmException;
 import gov.dot.faa.ang.idms.acmetpm.PropLoader;
 import gov.dot.faa.ang.idms.acmetpm.tpmcrypto.TpmProvider;
 
-import java.time.Duration;
-import java.time.Instant;
-import java.util.ArrayList;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.concurrent.Callable;
@@ -35,14 +33,18 @@ class App implements Callable<Integer> {
     static PropLoader props;
     static TpmProvider tpmProvider;
 
+    static AcmeTpm acmeTpm = new AcmeTpm();
+
     // Error codes for return functions.
     static final int FAIL = 1;
     static final int SUCCESS = 0;
 
     /**
-     * Function called by main to run the command. Checks to see if "--help" or "-h" was called and return help message, 
+     * Function called by main to run the command. Checks to see if "--help" or "-h"
+     * was called and return help message,
      * otherwise calls processCommand() to do something
-     * @return 
+     * 
+     * @return
      */
     @Override
     public Integer call() throws Exception {
@@ -55,7 +57,9 @@ class App implements Callable<Integer> {
     }
 
     /**
-     * process the commands directives passed in on the command line, and dispatch to the appropriate method
+     * process the commands directives passed in on the command line, and dispatch
+     * to the appropriate method
+     * 
      * @return SUCCESS(0) or FAIL(0) as returned by the underlying method
      */
     private int processCommand() {
@@ -75,13 +79,18 @@ class App implements Callable<Integer> {
 
             case "listexpiring":
                 return getExpiringDomains(expirationDate);
-            
+
             case "add":
                 return addDomain(domain);
 
             case "delete":
                 return deleteDomain(domain);
-            
+
+            case "request":
+                return requestCertificate(domain);
+
+            case "revoke":
+                return revokeCertificate(domain);
 
             default:
                 System.out.println("The command " + commandString
@@ -94,6 +103,7 @@ class App implements Callable<Integer> {
 
     /**
      * Prints a help message to the screen
+     * 
      * @return SUCCESS(0)
      */
     private int printHelp() {
@@ -105,12 +115,15 @@ class App implements Callable<Integer> {
     }
 
     /**
-     * Print a list of managed domains, or a message indicating that no domains are registered.
-     * @return SUCCESS(0) if we were able to get a list, or FAIL(0) if we weren't able to get a list
+     * Print a list of managed domains, or a message indicating that no domains are
+     * registered.
+     * 
+     * @return SUCCESS(0) if we were able to get a list, or FAIL(0) if we weren't
+     *         able to get a list
      */
     private int listDomains() {
         try {
-            var managedDomains = getManagedDomains();
+            var managedDomains = acmeTpm.listDomains();
             if (managedDomains.size() > 0) {
                 System.out.println("We are managing keys and certificates for the following domains:\n");
                 for (String domain : managedDomains) {
@@ -128,13 +141,16 @@ class App implements Callable<Integer> {
     }
 
     /**
-     * Print information for all domains under management. Calls getManagedDomains and then calls printDomainInfo for
+     * Print information for all domains under management. Calls getManagedDomains
+     * and then calls printDomainInfo for
      * each domain
-     * @return SUCCESS(0) if able to print info or FAIL(1) if an exception is raised while trying.
+     * 
+     * @return SUCCESS(0) if able to print info or FAIL(1) if an exception is raised
+     *         while trying.
      */
     private int printAllInfo() {
         try {
-            for (String domain : getManagedDomains()) {
+            for (String domain : acmeTpm.listDomains()) {
                 printDomainInfo(domain);
             }
         } catch (AcmeTpmException e) {
@@ -146,13 +162,17 @@ class App implements Callable<Integer> {
     }
 
     /**
-     * Prints information about the keypairs and certificats for one of the domains under management
+     * Prints information about the keypairs and certificats for one of the domains
+     * under management
+     * 
      * @param domainString - a string representing a domain, usually a hostname
-     * @return SUCCESS(0) if able to print info or FAIL(1) if an exception is raised while trying.
+     * @return SUCCESS(0) if able to print info or FAIL(1) if an exception is raised
+     *         while trying.
      */
     private int printDomainInfo(String domainString) {
         try {
-            if (tpmProvider.isManagedDomain(domainString)) {
+            var domainInfo = acmeTpm.getDomainInfo(domainString);
+            if (domainInfo.size() > 0) {
                 System.out.println("Domain information for Domain: " + domainString);
                 var keyInfo = tpmProvider.getKeyInfo(domainString);
                 for (var key : keyInfo.keySet()) {
@@ -171,34 +191,18 @@ class App implements Callable<Integer> {
 
     /**
      * print a list of domains that will expire before the date provided
-     * @param expirationDate - the expiration date to compare the domain certificates against
-     * @return SUCCESS(0) if able to print expiring domains or FAIL(1) if an exception is raised while trying.
+     * 
+     * @param expirationDate - the expiration date to compare the domain
+     *                       certificates against
+     * @return SUCCESS(0) if able to print expiring domains or FAIL(1) if an
+     *         exception is raised while trying.
      */
     private int getExpiringDomains(Date expirationDate) {
-        // if expiration date is not set, set it to the default configured in properties
-        try {
-            if (expirationDate == null) {
-                PropLoader props = new PropLoader();
-                int renewalLimit = Integer.valueOf(props.getProp("domains.renewalLimit"));
-                expirationDate = Date.from(Instant.now().plus(Duration.ofDays(renewalLimit)));
-            }
-        } catch (NumberFormatException | AcmeTpmException e) {
-            System.err.println("Error setting the renewal limit from properties: " + e.getMessage());
-            return FAIL;
-        }
+        HashMap<String, Date> expiringDomains;
 
         // Populate hashmap with "domain" : certificate expiration date
-        var notAfterHashMap = new HashMap<String, Date>();
         try {
-            var domains = tpmProvider.getDomains();
-            if (domains.size() == 0) {
-                System.out.println("No domains are managed on this server.");
-                return SUCCESS;
-            } else {
-                for (var domain : tpmProvider.getDomains()) {
-                    notAfterHashMap.put(domain, tpmProvider.domainCertExpiration(domain));
-                }
-            }
+            expiringDomains = acmeTpm.getExpiringDomains(expirationDate);
         } catch (AcmeTpmException e) {
             System.err.println("Error getting expiration dates from TPM backed token: " + e.getMessage());
             return FAIL;
@@ -206,18 +210,23 @@ class App implements Callable<Integer> {
 
         // Iterate through the keys to see if the expiration date is earlier than the
         // requested date
-        for (String domain : notAfterHashMap.keySet()) {
-            if (notAfterHashMap.get(domain).after(expirationDate)) {
-                System.out.println("Domain " + domain + " expiring on " + notAfterHashMap.get(domain));
+        if (expiringDomains.size() > 0) {
+            for (String domain : expiringDomains.keySet()) {
+                System.out.println("Domain " + domain + " expiring on " + expiringDomains.get(domain));
             }
+        } else {
+            System.out.println("No domain certificate expire before" + expirationDate.toString());
         }
         return SUCCESS;
     }
 
     /**
-     * Add a domain to the list of managed domains. This does not automatically request a certificate for the domain
+     * Add a domain to the list of managed domains. This does not automatically
+     * request a certificate for the domain
+     * 
      * @param domain - domain identifier to add (usually hostname)
-     * @return SUCCESS(0) if able to add domain or FAIL(1) if an exception is raised while trying.
+     * @return SUCCESS(0) if able to add domain or FAIL(1) if an exception is raised
+     *         while trying.
      */
     private static int addDomain(String domain) {
         try {
@@ -232,7 +241,9 @@ class App implements Callable<Integer> {
     }
 
     /**
-     * Deletes a domain from the list of managed domains. This does not automatically revoke the certificate for the domain
+     * Deletes a domain from the list of managed domains. This does not
+     * automatically revoke the certificate for the domain
+     * 
      * @param domain
      * @return
      */
@@ -241,22 +252,20 @@ class App implements Callable<Integer> {
         throw new UnsupportedOperationException("Unimplemented method 'deleteDomain'");
     }
 
+    private int requestCertificate(String domain) {
+        // TODO: fix this
+        return SUCCESS;
+    }
+
+    private int revokeCertificate(String domain) {
+        // TODO: fix this
+        return SUCCESS;
+    }
     // Shared utility functions
 
     /**
-     * Get a list of all managed domains 
-     * @return an ArrayList<String> with all managed domains (may be an empty arraylist)
-     * @throws AcmeTpmException
-     */
-    private static ArrayList<String> getManagedDomains() throws AcmeTpmException {
-        TpmProvider tpmProvider = new TpmProvider(props.getProp("token.password"));
-        return tpmProvider.getDomains();
-    }
-
-    
-
-    /**
      * main
+     * 
      * @param args
      */
     public static void main(String[] args) {
