@@ -3,7 +3,6 @@ package gov.dot.faa.ang.idms;
 import gov.dot.faa.ang.idms.acmetpm.AcmeTpm;
 import gov.dot.faa.ang.idms.acmetpm.AcmeTpmException;
 import gov.dot.faa.ang.idms.acmetpm.PropLoader;
-import gov.dot.faa.ang.idms.acmetpm.tpmcrypto.TpmProvider;
 
 import java.util.Date;
 import java.util.HashMap;
@@ -30,10 +29,10 @@ class App implements Callable<Integer> {
             "--expiration" }, paramLabel = "Expiration", description = "A cutoff date to compare to the expiration date in the certificates.")
     private Date expirationDate = null;
 
-    static PropLoader props;
-    static TpmProvider tpmProvider;
+    @Option(names = {"-i", "--input"}, paramLabel = "Input", description = "Input for an object that requires input.")
 
-    static AcmeTpm acmeTpm = new AcmeTpm();
+    static PropLoader props;
+    static AcmeTpm acmeTpm;
 
     // Error codes for return functions.
     static final int FAIL = 1;
@@ -67,6 +66,12 @@ class App implements Callable<Integer> {
             case "help":
                 return printHelp();
 
+            case "userinit":
+                return userInit();
+
+            case "installusercert":
+                return installUserCert();
+
             case "list":
                 return listDomains();
 
@@ -86,8 +91,8 @@ class App implements Callable<Integer> {
             case "delete":
                 return deleteDomain(domain);
 
-            case "request":
-                return requestCertificate(domain);
+            // case "request":
+            //     return requestCertificate(domain);
 
             case "revoke":
                 return revokeCertificate(domain);
@@ -112,6 +117,28 @@ class App implements Callable<Integer> {
         // thing.
         System.out.println("Print a convenient help message here.");
         return SUCCESS;
+    }
+
+    /**
+     * Generates and displays a Certifiate Signing Request for the user account
+     * 
+     * @return SUCCESS(0) or FAIL(1)
+     */
+    private int userInit() {
+        try {
+            String csr = acmeTpm.generateUserCSR();
+            System.out.println(csr);
+        } catch (AcmeTpmException e) {
+            System.err.println("Unable to generate user private key and CSR: " + e.getMessage());;
+            return FAIL;
+        }
+        return SUCCESS;
+    }
+
+    private int installUserCert() {
+        try {
+            acmeTpm.updateUserCert(commandString);
+        }
     }
 
     /**
@@ -150,8 +177,13 @@ class App implements Callable<Integer> {
      */
     private int printAllInfo() {
         try {
-            for (String domain : acmeTpm.listDomains()) {
-                printDomainInfo(domain);
+            var domains = acmeTpm.listDomains();
+            if (domains.size() == 0) {
+                System.out.println("No domains are under management by the TPM.");
+            } else {
+                for (String domain : domains) {
+                    printDomainInfo(domain);
+                }
             }
         } catch (AcmeTpmException e) {
             System.out.println(
@@ -174,7 +206,7 @@ class App implements Callable<Integer> {
             var domainInfo = acmeTpm.getDomainInfo(domainString);
             if (domainInfo.size() > 0) {
                 System.out.println("Domain information for Domain: " + domainString);
-                var keyInfo = tpmProvider.getKeyInfo(domainString);
+                var keyInfo = acmeTpm.getKeyInfo(domainString);
                 for (var key : keyInfo.keySet()) {
                     System.out.println(key + " : " + keyInfo.get(key));
                 }
@@ -230,8 +262,7 @@ class App implements Callable<Integer> {
      */
     private static int addDomain(String domain) {
         try {
-            var tpmProvider = new TpmProvider(props.getProp("token.password"));
-            tpmProvider.getDomainKeyPair(domain);
+            acmeTpm.addDomain(domain);
             System.out.println("Successfully added " + domain + " to managed domains.");
             return SUCCESS;
         } catch (Exception e) {
@@ -252,16 +283,32 @@ class App implements Callable<Integer> {
         throw new UnsupportedOperationException("Unimplemented method 'deleteDomain'");
     }
 
-    private int requestCertificate(String domain) {
-        // TODO: fix this
-        return SUCCESS;
-    }
+    // /**
+    //  * Generates a CSR for an existing domain. 
+    //  * @param domain
+    //  * @return
+    //  */
+    // private int requestCertificate(String domain) {
+    //     try {
+    //         if (acmeTpm.hasKeyPair(domain)) {
+    //             System.out.println("Certificate Signing Request for domain " + domain);
+    //             System.out.println(acmeTpm.generateCSR(domain));
+    //         } else {
+    //             System.err.println("Domain " + domain + " not managed by this instance.");
+    //             return FAIL;
+    //         }
+    //         return SUCCESS;
+    //     } catch (AcmeTpmException e) {
+    //         System.err.println("Unable to create CSR: " + e.getMessage());
+    //         return FAIL;
+    //     }
+    // }
 
     private int revokeCertificate(String domain) {
         // TODO: fix this
         return SUCCESS;
     }
-    // Shared utility functions
+    // Shared utility functions-
 
     /**
      * main
@@ -275,6 +322,14 @@ class App implements Callable<Integer> {
             System.out.println("Could not load properties file: " + e.getMessage());
             System.exit(1);
         }
+
+        try {
+            acmeTpm = new AcmeTpm();
+        } catch (AcmeTpmException e) {
+            System.err.println("Could not initialize acmeTpm: " + e.getMessage());
+            System.exit(1);
+        }
+
         int exitCode = new CommandLine(new App()).execute(args);
         System.exit(exitCode);
     }
