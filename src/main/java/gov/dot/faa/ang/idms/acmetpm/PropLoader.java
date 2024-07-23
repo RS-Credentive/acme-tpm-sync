@@ -16,13 +16,14 @@ public class PropLoader {
     private static final void fakeInitialize() {
         // This is a fake method so I can use the PropLoader before determining the file location and other stuff
         props.put("ejbca.addresses", "10.23.4.193|10.27.33.94|10.22.65.8|10.22.65.4");
-        props.put("ejbca.acme_uri", "https://10.22.65.12/ejbca/acme/")
+        props.put("ejbca.acme_uri", "https://10.22.65.12/ejbca/acme/");
         props.put("token.label", "label");
         props.put("token.password", "myuserpin");
         props.put("token.libraryPath", "/usr/lib64/pkcs11/libtpm2_pkcs11.so");
         props.put("domains.renewalLimit", "90");
         props.put("token.userAlias","userKeyPair");
-        props.put("token.truststore", "")
+        props.put("token.truststore", "/home/robert.ctr.sherwood/Projects/idmsTrustStore.p12"); // where is this?
+        props.put("token.jcaConfigFile", "/home/robert.ctr.sherwood/Projects/acmetpm.conf");
     }
 
     private static void initialize(Path propFile) throws AcmeTpmException {
@@ -57,8 +58,8 @@ public class PropLoader {
     }
 
     public String getTokenPassword() throws AcmeTpmException {
-        if (props.keySet().contains("token_password")) {
-            return props.get("token_password");
+        if (props.keySet().contains("token.password")) {
+            return props.get("token.password");
         } else {
             throw new AcmeTpmException("No token password in props file.");
         }
