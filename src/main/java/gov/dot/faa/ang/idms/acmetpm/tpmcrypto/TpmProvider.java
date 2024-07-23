@@ -4,7 +4,10 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.StringReader;
+import java.io.StringWriter;
 import java.math.BigInteger;
+import java.nio.file.Path;
 import java.security.InvalidAlgorithmParameterException;
 import java.security.KeyManagementException;
 import java.security.KeyPair;
@@ -44,13 +47,16 @@ import org.bouncycastle.cert.X509CertificateHolder;
 import org.bouncycastle.cert.X509v3CertificateBuilder;
 import org.bouncycastle.cert.jcajce.JcaX509CertificateConverter;
 import org.bouncycastle.jce.provider.BouncyCastleProvider;
+import org.bouncycastle.openssl.jcajce.JcaPEMWriter;
+import org.bouncycastle.openssl.PEMParser;
 import org.bouncycastle.operator.OperatorCreationException;
 import org.bouncycastle.operator.jcajce.JcaContentSignerBuilder;
+import org.bouncycastle.pkcs.PKCS10CertificationRequest;
+import org.bouncycastle.pkcs.jcajce.JcaPKCS10CertificationRequestBuilder;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import gov.dot.faa.ang.idms.acmetpm.AcmeTpm;
 import gov.dot.faa.ang.idms.acmetpm.AcmeTpmException;
 
 /* 
@@ -62,7 +68,6 @@ import gov.dot.faa.ang.idms.acmetpm.AcmeTpmException;
 public class TpmProvider {
 
     private static final Logger logger = LoggerFactory.getLogger(TpmProvider.class);
-    private static final String TPM_PKCS11_CONFIG = AcmeTpm.TPM_JCA_CONFIG.toString();
     private static final String KEYPAIR_ALGORITHM = "EC";
     private static final String CERT_SIG_ALG = "SHA256withECDSA";
     private static final String EC_PARAM_SPEC = "secp256r1";
@@ -81,13 +86,13 @@ public class TpmProvider {
      * @param tokenPassword The user PIN or password to unlock the token.
      * @throws AcmeTpmException
      */
-    public TpmProvider(String tokenPassword) throws AcmeTpmException {
+    public TpmProvider(String tokenPassword, String jcaConfigFilePath) throws AcmeTpmException {
         try {
             logger.debug("Intializing Token Provider");
             bcProvider = new BouncyCastleProvider();
             Security.addProvider(bcProvider);
-            logger.debug("Loading SunPKCS11 configuration from {}", TPM_PKCS11_CONFIG);
-            tpmProvider = Security.getProvider("SunPKCS11").configure("/" + TPM_PKCS11_CONFIG);
+            logger.debug("Loading SunPKCS11 configuration from {}", jcaConfigFilePath);
+            tpmProvider = Security.getProvider("SunPKCS11").configure("/" + jcaConfigFilePath);
             Security.addProvider(tpmProvider);
             this.tpmKeyStore = KeyStore.getInstance("PKCS11-TpmAccelerator", tpmProvider);
             this.tokenPassword = new KeyStore.PasswordProtection(tokenPassword.toCharArray());
@@ -111,27 +116,20 @@ public class TpmProvider {
             logger.debug("userKeyPair already loaded, returning from Memory");
             return this.userKeyPair;
         } else {
+            KeyPair keypair = null;
             try {
                 // Look for the KeyPair in the Token Keystore
-                if (this.tpmKeyStore.containsAlias(USER_ALIAS)) {
-                    logger.debug("Found userKeyPair in Keystore, retrieving");
-                    PublicKey userPubKey = this.tpmKeyStore.getCertificate(USER_ALIAS).getPublicKey();
-
-                    PrivateKey userPrivKey = ((PrivateKeyEntry) this.tpmKeyStore.getEntry(USER_ALIAS,
-                            this.tokenPassword)).getPrivateKey();
-
-                    this.userKeyPair = new KeyPair(userPubKey, userPrivKey);
-                    logger.debug("Completed loading userKeyPair from keystore - returning.");
-                    return this.userKeyPair;
-                } else { // If it doesn't exist, create and return it.
-                    logger.debug("userKeyPair not found in Keystore - creating Keystore");
-                    this.userKeyPair = newKeyPair();
-                    logger.debug("Calling storeKeyPair for userKeyPair");
-                    storeKeyPair(USER_ALIAS, userKeyPair);
-                    return this.userKeyPair;
+                keypair = getKeyPair(USER_ALIAS);
+                logger.debug("Completed loading userKeyPair from keystore - returning.");
+                if (keypair != null) {
+                    logger.debug("User keypair did not exist, creating it.");
+                    keypair = newKeyPair();
+                    storeKeyPair(USER_ALIAS, keypair);
                 }
-            } catch (KeyStoreException | UnrecoverableEntryException | NoSuchAlgorithmException e) {
-                throw new AcmeTpmException(e.getMessage());
+                this.userKeyPair = keypair;
+                return keypair;
+            } catch (AcmeTpmException e) {
+                throw new AcmeTpmException("Unable to get userKeyPair: " + e.getMessage());
             }
         }
     }
@@ -164,7 +162,7 @@ public class TpmProvider {
      * @return true if the keystore contains the alias, false if it does not.
      * @throws AcmeTpmException
      */
-    public boolean isManagedDomain(String domain) throws AcmeTpmException {
+    public boolean hasAlias(String domain) throws AcmeTpmException {
         try {
             return this.tpmKeyStore.containsAlias(domain);
         } catch (KeyStoreException e) {
@@ -179,7 +177,7 @@ public class TpmProvider {
      * @throws AcmeTpmException
      */
     public Date domainCertExpiration(String domain) throws AcmeTpmException {
-        if (isManagedDomain(domain)) {
+        if (hasAlias(domain)) {
             try {                
                 X509Certificate domainCert = (X509Certificate)this.tpmKeyStore.getCertificate(domain);
                 return domainCert.getNotAfter();
@@ -192,30 +190,24 @@ public class TpmProvider {
     }
 
     /**
-     * Returns the key pair corresponding to a hostname for this server. It will create the keypair if it doesn't exist.
-     * Guaranteed to return a keypair or throw an error.
+     * Generates and stores a key pair for an alias. It will create the keypair if it doesn't exist.
      * 
-     * @param domain the dns name for the host
-     * @return The keypair for that domain if it exists in the keystore
+     * @param alias the dns name for the host
+     * @return The keypair for that alias if it exists in the keystore
      * @throws AcmeTpmException if the attempt to retrieve or create the keypair fails
      */
-    public KeyPair getDomainKeyPair(String domain) throws AcmeTpmException {
-        logger.debug("Calling getDomainKeyPair for {}", domain);
+    public void addKeyPair(String alias) throws AcmeTpmException {
+        logger.debug("Calling getaliasKeyPair for {}", alias);
         try {
-            if (this.tpmKeyStore.containsAlias(domain)) {
-                logger.debug("Found keypair for {} in Keystore, fetching", domain);
-                PublicKey userPubKey = this.tpmKeyStore.getCertificate(domain).getPublicKey();
-                PrivateKey userPrivKey = ((PrivateKeyEntry) this.tpmKeyStore.getEntry(domain, this.tokenPassword))
-                        .getPrivateKey();
+            if (this.tpmKeyStore.containsAlias(alias)) {
+                logger.debug("Found keypair for {} in Keystore, fetching", alias);
                 logger.debug("Keypair successfully found, returning");
-                return new KeyPair(userPubKey, userPrivKey);
             } else { // If it doesn't exist, create and return it.
-                logger.debug("No keypair in keystore for {}, creating it.", domain);
-                KeyPair domainKeyPair = newKeyPair();
+                logger.debug("No keypair in keystore for {}, creating it.", alias);
+                KeyPair keyPair = newKeyPair();
                 logger.debug("KeyPair successfully created, storing in token...");
-                storeKeyPair(domain, domainKeyPair);
+                storeKeyPair(alias, keyPair);
                 logger.debug("Keypair successfully stored, returning.");
-                return domainKeyPair;
             }
         } catch (Exception e) {
             throw new AcmeTpmException(e.getMessage());
@@ -241,16 +233,16 @@ public class TpmProvider {
      * @return an SSL context which will leverage the TPM backed keys.
      * @throws AcmeTpmException if the SSL Context cannot be created
      */
-    public SSLContext getSSLContext() throws AcmeTpmException {
-        logger.info("Loading Client Keystore using PKCS11, with config {}", TPM_PKCS11_CONFIG);
+    public SSLContext getSSLContext(Path trustStorePath) throws AcmeTpmException {
+        logger.info("Loading Client Keystore using PKCS11");
         try {
             SSLContext sslContext = SSLContext.getInstance("TLSv1.3");
             KeyManagerFactory kmf = KeyManagerFactory.getInstance(KeyManagerFactory.getDefaultAlgorithm());
-            kmf.init(this.tpmKeyStore, AcmeTpm.CLIENT_KEY_STORE_PIN.toCharArray());
+            kmf.init(this.tpmKeyStore, this.tokenPassword.getPassword());
             KeyManager[] keyManagers = kmf.getKeyManagers();
             logger.info("Loaded {} key managers", keyManagers.length);
 
-            KeyStore trustStore = getTrustStore();
+            KeyStore trustStore = getTrustStore(trustStorePath);
 
             TrustManagerFactory tmf = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm());
             tmf.init(trustStore);
@@ -261,6 +253,21 @@ public class TpmProvider {
         } catch (AcmeTpmException | KeyManagementException | KeyStoreException
                 | NoSuchAlgorithmException | UnrecoverableKeyException e) {
             throw new AcmeTpmException(e.getMessage());
+        }
+    }
+
+    
+    public String getCSR(String alias) throws AcmeTpmException {
+        logger.info("Generating CSR for alias " + alias);
+        try {
+            PKCS10CertificationRequest request = createCertificateRequest(alias);
+            StringWriter sw = new StringWriter();
+            JcaPEMWriter writer = new JcaPEMWriter(sw);
+            writer.writeObject(request);
+            writer.close();
+            return sw.toString();
+        } catch (AcmeTpmException | IOException e) {
+            throw new AcmeTpmException("Error creating signing request for alias " + alias + ": " + e.getMessage());
         }
     }
 
@@ -315,14 +322,73 @@ public class TpmProvider {
         }
     }
 
+
+    /**
+     * getKeyPair returns the keypair for an alias if it exists. It will return a
+     * keypair or raise an Exception.
+     *
+     * @return The KeyPair associated with the user account on the ACME server.
+     * @throws AcmeTpmException
+     */
+    private KeyPair getKeyPair(String alias) throws AcmeTpmException {
+        try {
+            // Look for the KeyPair in the Token Keystore
+            if (this.tpmKeyStore.containsAlias(alias)) {
+                logger.debug("Found userKeyPair in Keystore, retrieving");
+                PublicKey userPubKey = this.tpmKeyStore.getCertificate(alias).getPublicKey();
+
+                PrivateKey userPrivKey = ((PrivateKeyEntry) this.tpmKeyStore.getEntry(alias,
+                        this.tokenPassword)).getPrivateKey();
+
+                this.userKeyPair = new KeyPair(userPubKey, userPrivKey);
+                logger.debug("Completed loading userKeyPair from keystore - returning.");
+                return this.userKeyPair;
+            } else {
+                throw new AcmeTpmException("Unable to find keypair for " + alias);
+            }
+        } catch (KeyStoreException | UnrecoverableEntryException | NoSuchAlgorithmException e) {
+            throw new AcmeTpmException(e.getMessage());
+        }
+    }    
+
+    /**
+     * Generates a PKCS10 Certificate request and returns it to the caller.
+     * @param alias - the alias corresponding to the keypair for which the request will be generated.
+     * @return Signed Certificate Request
+     * @throws AcmeTpmException
+     */
+    // TODO: Update so that the profile is correct unless EJBCA will do that for us
+    private PKCS10CertificationRequest createCertificateRequest(String alias) throws AcmeTpmException {
+        KeyPair keyPair;
+        X500Name distinguishedName = new X500NameBuilder(BCStyle.INSTANCE).addRDN(BCStyle.CN, "Self").build();
+        try {
+            keyPair = getKeyPair(alias);
+            PKCS10CertificationRequest request = new JcaPKCS10CertificationRequestBuilder(
+                distinguishedName,
+                keyPair.getPublic()
+                ).build(new JcaContentSignerBuilder(CERT_SIG_ALG).build(keyPair.getPrivate()));
+            return request;
+        } catch (OperatorCreationException e) {
+            throw new AcmeTpmException("Unable to create certificate request for " + alias + ": " + e.getMessage());
+        }
+    }
+
     /**
      * This function is called when an updated certificate is obtained from the ACME server. It update the keypair in the token
      * @param alias the alias of the keypair to update
      * @param certHolder a certificateHolder object to be converted into a certificate and stored in the token.
      */
-    private void updateCertificate(String alias, X509CertificateHolder certHolder) {
+    public void updateCertificate(String alias, String certPEM) {
         // Accept a certificate and update the pkcs11 store with the cert in the right
         // alias
+        try {
+            X509CertificateHolder certHolder;
+            PEMParser parser = new PEMParser(new StringReader(certPEM));
+            parser.readObject();
+        } catch (IOException e) {
+            // TODO Auto-generated catch block
+            e.printStackTrace();
+        }
 
     }
 
@@ -331,18 +397,18 @@ public class TpmProvider {
      * @return the Keystore representing the trust store containing the CA public key certificates
      * @throws AcmeTpmException if the keystore does not exist or cannot be loaded.
      */
-    private KeyStore getTrustStore() throws AcmeTpmException {
+    private KeyStore getTrustStore(Path ejbcaTrustStore) throws AcmeTpmException {
         KeyStore keystore;
         try {
-            String trustStorePassword = AcmeTpm.tokenPassword;
+            char[] trustStorePassword = "".toCharArray(); // this is a trust store - no password
             keystore = KeyStore.getInstance("PKCS12");
 
-            final File keystoreFile = AcmeTpm.EJBCA_TRUSTSTORE.toFile();
+            final File keystoreFile = ejbcaTrustStore.toFile();
 
             logger.info("Loading keystore from file {}", keystoreFile);
             InputStream keystoreStream = new FileInputStream(keystoreFile);
 
-            keystore.load(keystoreStream, trustStorePassword.toCharArray());
+            keystore.load(keystoreStream, trustStorePassword);
         } catch (KeyStoreException | IOException | NoSuchAlgorithmException | CertificateException e) {
             throw new AcmeTpmException(e.getMessage());
         }
