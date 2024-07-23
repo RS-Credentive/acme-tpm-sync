@@ -8,6 +8,8 @@ import java.util.ArrayList;
 import java.util.Date;
 import java.util.HashMap;
 
+import javax.net.ssl.SSLContext;
+
 import gov.dot.faa.ang.idms.acmetpm.tpmcrypto.TpmProvider;
 
 /**
@@ -16,43 +18,32 @@ import gov.dot.faa.ang.idms.acmetpm.tpmcrypto.TpmProvider;
  * @author robert.sherwood@credentive.com
  */
 public class AcmeTpm {
-    public static final Path BASEPATH = FileSystems.getDefault().getPath("home", "robert.ctr.sherwood", "Projects",
+    private static final Path BASEPATH = FileSystems.getDefault().getPath("home", "robert.ctr.sherwood", "Projects",
             "acmetpm");
-    public static final Path TPM_JCA_CONFIG = BASEPATH.resolve("acmetpm.conf");
-    public static final Path EJBCA_TRUSTSTORE = BASEPATH.resolve("idmsTrustStore.p12");
+    private static final Path TPM_JCA_CONFIG = BASEPATH.resolve("acmetpm.conf");
+    private static final Path EJBCA_TRUSTSTORE = BASEPATH.resolve("idmsTrustStore.p12");
 
     public static String[] EJBCA_SERVERS;
-    public static PropLoader props;
-    public static String tokenPassword;
-    public TpmProvider tpmProvider;
+    private static PropLoader props;
+    private static String tokenPassword;
+    private TpmProvider tpmProvider;
 
 
-    public AcmeTpm() {
+    public AcmeTpm() throws AcmeTpmException {
         // Verify the properties file
         try {
             props = new PropLoader();
             tokenPassword = props.getTokenPassword();
-        } catch (AcmeTpmException ex) {
-            System.out.println(ex);
-            System.exit(1);
+        } catch (AcmeTpmException e) {
+            throw new AcmeTpmException(e.getMessage());
         }        
 
         // Load the TPM Keystore
         try {
-            tpmProvider = new TpmProvider(tokenPassword);
-        } catch (Exception e) {
-            System.out.println(e);
-            System.exit(1);
+            tpmProvider = new TpmProvider(tokenPassword, TPM_JCA_CONFIG.toString());
+        } catch (AcmeTpmException e) {
+            throw new AcmeTpmException(e.getMessage());
         }
-
-        // KeyPair domainKeys;
-        // // Get or create key for requested domain
-        // try {
-        //     domainKeys = tpmProvider.getDomainKeyPair(domain);
-        // } catch (AcmeTpmException e) {
-        //     System.out.println(e.getLocalizedMessage());
-        //     System.exit(1);
-        // }
 
         // Create a Session with the EJBCA Server
         // URI caUri=null; 
@@ -85,8 +76,28 @@ public class AcmeTpm {
         // Install Certificate in Server
     }
 
-    public String generateCSR(String keyPairAlias) {
-        if (tpmProvider.)
+    /**
+     * Returns information related to keys 
+     * @param domainString
+     * @return
+     * @throws AcmeTpmException
+     */
+    public HashMap<String, String> getKeyInfo(String domainString) throws AcmeTpmException {
+        return tpmProvider.getKeyInfo(domainString);
+    }
+
+    /**
+     * Generates a CSR for the userKeyPair and returns it as a PEM encoded string.
+     * @param keyPairAlias - the alias of the keypair for which to generate the CSR
+     * @return PEM encoded String representing the CSR.
+     * @throws AcmeTpmException
+     */
+    public String generateUserCSR() throws AcmeTpmException {
+        return tpmProvider.getCSR(props.getProp("token.userAlias"));
+    }
+
+    public void updateUserCert(String certPEM) throws AcmeTpmException {
+        tpmProvider.updateCertificate(props.getProp("token.userAlias"), certPEM);
     }
 
     /**
@@ -96,7 +107,7 @@ public class AcmeTpm {
      */
     public HashMap<String, String> getDomainInfo(String domainString) throws AcmeTpmException {
         try {
-            if (tpmProvider.isManagedDomain(domainString)) {
+            if (tpmProvider.hasAlias(domainString)) {
                 return tpmProvider.getKeyInfo(domainString);
             } else {
                 // return an empty hashmap
@@ -105,6 +116,10 @@ public class AcmeTpm {
         } catch (AcmeTpmException e) {
             throw new AcmeTpmException("Error while attempting to get info for domain " + domainString + ": " + e.getMessage());
         }
+    }
+
+    public boolean hasKeyPair(String alias) throws AcmeTpmException {
+        return tpmProvider.hasAlias(alias);
     }
 
     /**
@@ -117,6 +132,17 @@ public class AcmeTpm {
         } catch (AcmeTpmException e) {
             throw new AcmeTpmException("Error receieved while trying to list Domains: " + e.getMessage());
         }
+    }
+
+    /**
+     * Adds a new domain to the managed domain list, generating and storing a key pair.
+     * Note that if the domain already exists, nothing changes and the keys are not modified.
+     * 
+     * @param domain
+     * @throws AcmeTpmException
+     */
+    public void addDomain(String domain) throws AcmeTpmException {
+        tpmProvider.addKeyPair(domain);
     }
 
     /**
@@ -150,5 +176,15 @@ public class AcmeTpm {
             throw new AcmeTpmException("Error getting expiration dates from TPM backed token: " + e.getMessage());
         }
 
+    }
+
+    /**
+     * Returns an SSLContext from the tpmProvider. Used for client authenticated SSL connections to the ACME server
+     * 
+     * @return an SSL context which will leverage the TPM backed keys.
+     * @throws AcmeTpmException if the SSL Context cannot be created
+     */
+    public SSLContext getSSLContext() throws AcmeTpmException {
+        return tpmProvider.getSSLContext(EJBCA_TRUSTSTORE);
     }
 }
