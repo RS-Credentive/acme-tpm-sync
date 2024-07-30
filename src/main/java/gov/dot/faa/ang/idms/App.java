@@ -4,6 +4,9 @@ import gov.dot.faa.ang.idms.acmetpm.AcmeTpm;
 import gov.dot.faa.ang.idms.acmetpm.AcmeTpmException;
 import gov.dot.faa.ang.idms.acmetpm.PropLoader;
 
+import java.io.Console;
+import java.util.Scanner;
+
 import java.util.Date;
 import java.util.HashMap;
 import java.util.concurrent.Callable;
@@ -66,11 +69,14 @@ class App implements Callable<Integer> {
             case "help":
                 return printHelp();
 
-            case "userinit":
-                return userInit();
+            case "requestusercert":
+                return requestUserCert();
 
             case "installusercert":
                 return installUserCert();
+
+            case "diagnostic":
+                return printDiagnostic();
 
             case "list":
                 return listDomains();
@@ -106,6 +112,21 @@ class App implements Callable<Integer> {
 
     // Functions implementing command options
 
+    private int printDiagnostic() {
+        try {
+            System.out.println("User information:");
+            var keyInfo = acmeTpm.getUserKeyInfo();
+            for (var key : keyInfo.keySet()) {
+                System.out.println(key + " : " + keyInfo.get(key));
+            }
+            listDomains();
+            return SUCCESS;
+        } catch (AcmeTpmException e) {
+            System.err.println("Unable to get diagnostic information from the TPM: " + e.getMessage());
+            return FAIL;
+        }
+    }
+
     /**
      * Prints a help message to the screen
      * 
@@ -124,7 +145,7 @@ class App implements Callable<Integer> {
      * 
      * @return SUCCESS(0) or FAIL(1)
      */
-    private int userInit() {
+    private int requestUserCert() {
         try {
             String csr = acmeTpm.generateUserCSR();
             System.out.println(csr);
@@ -137,8 +158,49 @@ class App implements Callable<Integer> {
 
     private int installUserCert() {
         try {
-            acmeTpm.updateUserCert(commandString);
+            Console console = System.console();
+            if (console == null) {
+                System.err.println("Unable to get system console.");
+                return FAIL;
+            }
+
+            Scanner certScanner = new Scanner(System.in);
+            StringBuilder pemCertBuilder = new StringBuilder();
+            String input;
+            boolean recording = false;
+
+            System.out.println("Paste the certificate in PEM format:");
+            
+            while ((certScanner.hasNextLine())) {
+                input = certScanner.nextLine();
+                // Ignore everthing up until "BEGIN CERTIFICATE"
+                if (input.contains("BEGIN CERTIFICATE")) {
+                    recording = true;
+                }
+                // Stop when we see "END CERTIFICATE"
+                if (input.contains("END CERTIFICATE")) {
+                    pemCertBuilder.append(input);
+                    break;
+                }
+
+                // Add the PEM contents to the StringBuilder
+                if (recording) {
+                    pemCertBuilder.append(input + "\n");
+                }
+            }
+            certScanner.close();
+
+            // grab the certstring from the stringbuilder
+            var pemCert = pemCertBuilder.toString();
+
+            // send the PEM cert to the update function.
+            acmeTpm.updateUserCert(pemCert);
+        } catch (AcmeTpmException e) {
+            System.err.println("Unable to install user Certificate: " + e.getMessage());
+            return FAIL;
         }
+
+        return SUCCESS;
     }
 
     /**

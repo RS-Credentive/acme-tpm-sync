@@ -24,6 +24,7 @@ import java.security.SecureRandom;
 import java.security.Security;
 import java.security.UnrecoverableEntryException;
 import java.security.UnrecoverableKeyException;
+import java.security.cert.Certificate;
 import java.security.cert.CertificateException;
 import java.security.cert.X509Certificate;
 import java.security.spec.ECGenParameterSpec;
@@ -374,20 +375,33 @@ public class TpmProvider {
     }
 
     /**
-     * This function is called when an updated certificate is obtained from the ACME server. It update the keypair in the token
+     * This function is called when an updated certificate is obtained from the ACME server, or when the user auth certificate is updated. 
+     * It update the keypair in the token associated with the alias passed in.
      * @param alias the alias of the keypair to update
      * @param certHolder a certificateHolder object to be converted into a certificate and stored in the token.
      */
-    public void updateCertificate(String alias, String certPEM) {
+    public void updateCertificate(String alias, String certPEM) throws AcmeTpmException {
         // Accept a certificate and update the pkcs11 store with the cert in the right
         // alias
         try {
-            X509CertificateHolder certHolder;
-            PEMParser parser = new PEMParser(new StringReader(certPEM));
-            parser.readObject();
-        } catch (IOException e) {
-            // TODO Auto-generated catch block
-            e.printStackTrace();
+            // Convert the String to a Certificate
+            Certificate cert = pemToCert(certPEM);
+            
+            // fetch the keystore entry
+            if (tpmKeyStore.entryInstanceOf(alias, PrivateKeyEntry.class)) {
+                PrivateKeyEntry currentEntry = (PrivateKeyEntry) tpmKeyStore.getEntry(alias, tokenPassword);
+                PrivateKeyEntry newEntry = new PrivateKeyEntry(currentEntry.getPrivateKey(), new Certificate[] {cert});
+                tpmKeyStore.setEntry(alias, newEntry, tokenPassword);
+            } else {
+                try {
+                    String entryType = tpmKeyStore.getEntry(alias, tokenPassword).getClass().getName();
+                    throw new AcmeTpmException("Keystore entry " + alias + " is not the correct type. Expected PrivateKeyEntry, but got " + entryType);
+                } catch (Exception e) {
+                    throw new AcmeTpmException("Keystore entry " + alias + " is not the correct type, and we were unable to determine its type.");
+                }
+            }
+        } catch (KeyStoreException | NoSuchAlgorithmException | UnrecoverableEntryException e) {
+            throw new AcmeTpmException("Unable to update certificate for keystore alias " + alias + ": " + e.getMessage());
         }
 
     }
@@ -417,22 +431,31 @@ public class TpmProvider {
 
     /**
      * Returns information related to keys 
-     * @param domainString
+     * @param alias
      * @return
      * @throws AcmeTpmException
      */
-    public HashMap<String, String> getKeyInfo(String domainString) throws AcmeTpmException {
+    public HashMap<String, String> getKeyInfo(String alias) throws AcmeTpmException {
         try {
             var keyInfoHashMap = new HashMap<String, String>();
-            if (this.tpmKeyStore.containsAlias(domainString)) {
-                this.tpmKeyStore.getCreationDate(domainString);
-                keyInfoHashMap.put("keySize", domainString);
+            if (this.tpmKeyStore.containsAlias(alias)) {
+                this.tpmKeyStore.getCreationDate(alias);
+                keyInfoHashMap.put("keySize", alias);
                 return keyInfoHashMap;
             } else {
-                throw new AcmeTpmException(domainString + "  is not a managed domain.");
+                throw new AcmeTpmException(alias + "  is not a managed domain.");
             }
         } catch (KeyStoreException e) {
-            throw new AcmeTpmException("Unable to access key for " + domainString + ": " + e.getMessage());
+            throw new AcmeTpmException("Unable to access key for " + alias + ": " + e.getMessage());
+        }
+    }
+
+    private X509Certificate pemToCert(String certPEM) throws AcmeTpmException {
+        try (PEMParser parser = new PEMParser(new StringReader(certPEM))) {
+            JcaX509CertificateConverter x509Converter = new JcaX509CertificateConverter().setProvider(bcProvider);
+            return x509Converter.getCertificate((X509CertificateHolder) parser.readObject());
+        } catch (Exception e) {
+            throw new AcmeTpmException("Unable to convert provided string to x509Certificate" + e.getMessage());
         }
     }
 

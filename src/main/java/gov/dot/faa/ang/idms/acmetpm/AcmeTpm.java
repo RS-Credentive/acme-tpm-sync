@@ -76,6 +76,16 @@ public class AcmeTpm {
         // Install Certificate in Server
     }
 
+        /**
+     * Returns information related to keys 
+     * @param domainString
+     * @return
+     * @throws AcmeTpmException
+     */
+    public HashMap<String, String> getUserKeyInfo() throws AcmeTpmException {
+        return tpmProvider.getKeyInfo(props.getProp("token.userAlias"));
+    }
+
     /**
      * Returns information related to keys 
      * @param domainString
