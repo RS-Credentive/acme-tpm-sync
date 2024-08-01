@@ -257,11 +257,32 @@ public class TpmProvider {
         }
     }
 
-    
-    public String getCSR(String alias) throws AcmeTpmException {
+    /**
+     * Calls createCertRequest() to create a CSR and returns it in DER format
+     * @param alias the keystore alias with the keypair for which the csr is generated
+     * @return a CSR in DER format
+     * @throws AcmeTpmException
+     */
+    public byte[] getCertRequestDER(String alias) throws AcmeTpmException {
         logger.info("Generating CSR for alias " + alias);
         try {
-            PKCS10CertificationRequest request = createCertificateRequest(alias);
+            PKCS10CertificationRequest request = createCertRequest(alias);
+            return request.getEncoded();
+        } catch (AcmeTpmException | IOException e) {
+            throw new AcmeTpmException("Error creating signing request for alias " + alias + ": " + e.getMessage());
+        }
+    }
+    
+    /**
+     * Calls createCertRequest() to create a CSR and returns it in PEM format
+     * @param alias the keystore alias with the keypair for which the csr is generated
+     * @return a CSR in PEM format
+     * @throws AcmeTpmException
+     */
+    public String getCertRequestPEM(String alias) throws AcmeTpmException {
+        logger.info("Generating CSR for alias " + alias);
+        try {
+            PKCS10CertificationRequest request = createCertRequest(alias);
             StringWriter sw = new StringWriter();
             JcaPEMWriter writer = new JcaPEMWriter(sw);
             writer.writeObject(request);
@@ -269,6 +290,28 @@ public class TpmProvider {
             return sw.toString();
         } catch (AcmeTpmException | IOException e) {
             throw new AcmeTpmException("Error creating signing request for alias " + alias + ": " + e.getMessage());
+        }
+    }
+
+    /**
+     * Generates a PKCS10 Certificate request and returns it to the caller.
+     * @param alias - the alias corresponding to the keypair for which the request will be generated.
+     * @return Signed Certificate Request
+     * @throws AcmeTpmException
+     */
+    // TODO: Update so that the profile is correct unless EJBCA will do that for us
+    private PKCS10CertificationRequest createCertRequest(String alias) throws AcmeTpmException {
+        KeyPair keyPair;
+        X500Name distinguishedName = new X500NameBuilder(BCStyle.INSTANCE).addRDN(BCStyle.CN, "Self").build();
+        try {
+            keyPair = getKeyPair(alias);
+            PKCS10CertificationRequest request = new JcaPKCS10CertificationRequestBuilder(
+                distinguishedName,
+                keyPair.getPublic()
+                ).build(new JcaContentSignerBuilder(CERT_SIG_ALG).build(keyPair.getPrivate()));
+            return request;
+        } catch (OperatorCreationException e) {
+            throw new AcmeTpmException("Unable to create certificate request for " + alias + ": " + e.getMessage());
         }
     }
 
@@ -331,7 +374,7 @@ public class TpmProvider {
      * @return The KeyPair associated with the user account on the ACME server.
      * @throws AcmeTpmException
      */
-    private KeyPair getKeyPair(String alias) throws AcmeTpmException {
+    public KeyPair getKeyPair(String alias) throws AcmeTpmException {
         try {
             // Look for the KeyPair in the Token Keystore
             if (this.tpmKeyStore.containsAlias(alias)) {
@@ -353,29 +396,8 @@ public class TpmProvider {
     }    
 
     /**
-     * Generates a PKCS10 Certificate request and returns it to the caller.
-     * @param alias - the alias corresponding to the keypair for which the request will be generated.
-     * @return Signed Certificate Request
-     * @throws AcmeTpmException
-     */
-    // TODO: Update so that the profile is correct unless EJBCA will do that for us
-    private PKCS10CertificationRequest createCertificateRequest(String alias) throws AcmeTpmException {
-        KeyPair keyPair;
-        X500Name distinguishedName = new X500NameBuilder(BCStyle.INSTANCE).addRDN(BCStyle.CN, "Self").build();
-        try {
-            keyPair = getKeyPair(alias);
-            PKCS10CertificationRequest request = new JcaPKCS10CertificationRequestBuilder(
-                distinguishedName,
-                keyPair.getPublic()
-                ).build(new JcaContentSignerBuilder(CERT_SIG_ALG).build(keyPair.getPrivate()));
-            return request;
-        } catch (OperatorCreationException e) {
-            throw new AcmeTpmException("Unable to create certificate request for " + alias + ": " + e.getMessage());
-        }
-    }
-
-    /**
-     * This function is called when an updated certificate is obtained from the ACME server, or when the user auth certificate is updated. 
+     * Call this function when an updated certificate is obtained from the ACME server, 
+     * or when the user auth certificate is updated out of band. 
      * It update the keypair in the token associated with the alias passed in.
      * @param alias the alias of the keypair to update
      * @param certHolder a certificateHolder object to be converted into a certificate and stored in the token.
@@ -414,7 +436,7 @@ public class TpmProvider {
     private KeyStore getTrustStore(Path ejbcaTrustStore) throws AcmeTpmException {
         KeyStore keystore;
         try {
-            char[] trustStorePassword = "".toCharArray(); // this is a trust store - no password
+            char[] trustStorePassword = "trustme".toCharArray(); 
             keystore = KeyStore.getInstance("PKCS12");
 
             final File keystoreFile = ejbcaTrustStore.toFile();
@@ -439,17 +461,28 @@ public class TpmProvider {
         try {
             var keyInfoHashMap = new HashMap<String, String>();
             if (this.tpmKeyStore.containsAlias(alias)) {
-                this.tpmKeyStore.getCreationDate(alias);
-                keyInfoHashMap.put("keySize", alias);
+                var ksEntry = this.tpmKeyStore.getEntry(alias, tokenPassword);
+                var attributes = ksEntry.getAttributes();
+                System.out.println("Key Alias: " + alias);
+                for (var attribute: attributes) {
+                    keyInfoHashMap.put(attribute.getName(), attribute.getValue());
+                }
+                
                 return keyInfoHashMap;
             } else {
                 throw new AcmeTpmException(alias + "  is not a managed domain.");
             }
-        } catch (KeyStoreException e) {
+        } catch (KeyStoreException | NoSuchAlgorithmException | UnrecoverableEntryException e) {
             throw new AcmeTpmException("Unable to access key for " + alias + ": " + e.getMessage());
         }
     }
 
+    /**
+     * Converts an X509Certificate in PEM format to an X509Certificate
+     * @param certPEM a cert in PEM format
+     * @return and X509Certificate object
+     * @throws AcmeTpmException
+     */
     private X509Certificate pemToCert(String certPEM) throws AcmeTpmException {
         try (PEMParser parser = new PEMParser(new StringReader(certPEM))) {
             JcaX509CertificateConverter x509Converter = new JcaX509CertificateConverter().setProvider(bcProvider);

@@ -16,7 +16,7 @@ public class PropLoader {
     private static final void fakeInitialize() {
         // This is a fake method so I can use the PropLoader before determining the file location and other stuff
         props.put("ejbca.addresses", "10.23.4.193|10.27.33.94|10.22.65.8|10.22.65.4");
-        props.put("ejbca.acme_uri", "https://10.22.65.12/ejbca/acme/");
+        props.put("ejbca.sessionUri", "https://10.22.65.12");
         props.put("token.label", "label");
         props.put("token.password", "myuserpin");
         props.put("token.libraryPath", "/usr/lib64/pkcs11/libtpm2_pkcs11.so");
@@ -24,6 +24,8 @@ public class PropLoader {
         props.put("token.userAlias","userKeyPair");
         props.put("token.truststore", "/home/robert.ctr.sherwood/Projects/idmsTrustStore.p12"); // where is this?
         props.put("token.jcaConfigFile", "/home/robert.ctr.sherwood/Projects/acmetpm.conf");
+        props.put("acme.accountURL", null);
+        props.put("acme.userEmail", "robert.ctr.sherwood@faa.gov");
     }
 
     private static void initialize(Path propFile) throws AcmeTpmException {
@@ -45,7 +47,20 @@ public class PropLoader {
     }
 
     public String getProp(String propName) {
-        return props.get(propName);
+        if (props.containsKey(propName)) {
+            return props.get(propName);
+        } else {
+            return null;
+        }
+        
+    }
+
+    public void setProp(String propName, String value) {
+        props.put(propName, value);
+    }
+
+    public boolean hasProp(String propName) {
+        return props.containsKey(propName);
     }
 
     public String[] getEjbcaServers() throws AcmeTpmException {

@@ -3,8 +3,11 @@ package gov.dot.faa.ang.idms;
 import gov.dot.faa.ang.idms.acmetpm.AcmeTpm;
 import gov.dot.faa.ang.idms.acmetpm.AcmeTpmException;
 import gov.dot.faa.ang.idms.acmetpm.PropLoader;
+import gov.dot.faa.ang.idms.acmetpm.acme.IdmsAcmeProvider;
 
 import java.io.Console;
+import java.net.URI;
+import java.net.URISyntaxException;
 import java.util.Scanner;
 
 import java.util.Date;
@@ -76,7 +79,7 @@ class App implements Callable<Integer> {
                 return installUserCert();
 
             case "diagnostic":
-                return printDiagnostic();
+                return Diagnostic();
 
             case "list":
                 return listDomains();
@@ -97,8 +100,8 @@ class App implements Callable<Integer> {
             case "delete":
                 return deleteDomain(domain);
 
-            // case "request":
-            //     return requestCertificate(domain);
+            case "request":
+                return requestCertificate(domain);
 
             case "revoke":
                 return revokeCertificate(domain);
@@ -112,17 +115,34 @@ class App implements Callable<Integer> {
 
     // Functions implementing command options
 
-    private int printDiagnostic() {
+    private int Diagnostic() {
         try {
+            // List user info
             System.out.println("User information:");
+            System.out.println("User keystore entry exists.");
             var keyInfo = acmeTpm.getUserKeyInfo();
-            for (var key : keyInfo.keySet()) {
-                System.out.println(key + " : " + keyInfo.get(key));
+            if (keyInfo.size() > 0) {
+                for (var key : keyInfo.keySet()) {
+                    System.out.println(key + " : " + keyInfo.get(key));
+                }
+            } else { 
+                System.out.println("No attributes registered for keyStore entry");
             }
+
+            // List domains
+            System.out.println("Managed Domain Information:");
             listDomains();
+            
+            // List ACME metadata
+            var metadataValues = acmeTpm.testAcmeConnection();
+            for (String key: metadataValues.keySet()) {
+                System.out.println("KEY: " + key + " / VALUE: " + metadataValues.get(key));
+            }
+
+
             return SUCCESS;
         } catch (AcmeTpmException e) {
-            System.err.println("Unable to get diagnostic information from the TPM: " + e.getMessage());
+            System.err.println("Diagnostic failed: " + e.getMessage());
             return FAIL;
         }
     }
@@ -324,8 +344,17 @@ class App implements Callable<Integer> {
      */
     private static int addDomain(String domain) {
         try {
+            System.out.print("Generating and storing keypair for  " + domain + "...");
             acmeTpm.addDomain(domain);
-            System.out.println("Successfully added " + domain + " to managed domains.");
+            System.out.println("done.");
+            
+            System.out.print("Generating CSR for " + domain + "...");
+            var certReq = acmeTpm.generateCSR(domain);
+            System.out.println("done.");
+
+            System.out.print("Submitting request to ACME server ...");        
+            
+            System.out.println("done.");
             return SUCCESS;
         } catch (Exception e) {
             System.err.println("Unable to add " + domain + " to managed Domains: " + e.getMessage());
@@ -344,27 +373,6 @@ class App implements Callable<Integer> {
         // TODO Auto-generated method stub
         throw new UnsupportedOperationException("Unimplemented method 'deleteDomain'");
     }
-
-    // /**
-    //  * Generates a CSR for an existing domain. 
-    //  * @param domain
-    //  * @return
-    //  */
-    // private int requestCertificate(String domain) {
-    //     try {
-    //         if (acmeTpm.hasKeyPair(domain)) {
-    //             System.out.println("Certificate Signing Request for domain " + domain);
-    //             System.out.println(acmeTpm.generateCSR(domain));
-    //         } else {
-    //             System.err.println("Domain " + domain + " not managed by this instance.");
-    //             return FAIL;
-    //         }
-    //         return SUCCESS;
-    //     } catch (AcmeTpmException e) {
-    //         System.err.println("Unable to create CSR: " + e.getMessage());
-    //         return FAIL;
-    //     }
-    // }
 
     private int revokeCertificate(String domain) {
         // TODO: fix this
