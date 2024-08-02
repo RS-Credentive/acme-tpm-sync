@@ -13,24 +13,34 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.HashMap;
+import java.util.List;
+import java.util.Optional;
 
 import javax.net.ssl.SSLContext;
 
 import org.shredzone.acme4j.Session;
+import org.shredzone.acme4j.Status;
+import org.shredzone.acme4j.challenge.Challenge;
+import org.shredzone.acme4j.challenge.Http01Challenge;
+import org.shredzone.acme4j.challenge.Dns01Challenge;
 import org.shredzone.acme4j.exception.AcmeException;
 import org.shredzone.acme4j.provider.AcmeProvider;
 import org.shredzone.acme4j.toolbox.JSON;
 import org.shredzone.acme4j.Account;
 import org.shredzone.acme4j.AccountBuilder;
+import org.shredzone.acme4j.Authorization;
 import org.shredzone.acme4j.Login;
 import org.shredzone.acme4j.Metadata;
 import org.shredzone.acme4j.Order;
 
 import gov.dot.faa.ang.idms.acmetpm.tpmcrypto.TpmProvider;
 import gov.dot.faa.ang.idms.acmetpm.acme.IdmsAcmeProvider;
+import gov.dot.faa.ang.idms.acmetpm.apacheconfig.ApacheConfigReader;
+import gov.dot.faa.ang.idms.acmetpm.apacheconfig.ApacheHTTPAuthz;
 
 /**
- * Wraps calls to the EJBCA ACME API, leveraging TPM Backed private keys and updating the apache configuration
+ * Wraps calls to the EJBCA ACME API, leveraging TPM Backed private keys and updating the 
+ * apache configuration
  *
  * @author robert.sherwood@credentive.com
  */
@@ -47,39 +57,58 @@ public class AcmeTpm {
     private TpmProvider tpmProvider;
     private URI caUri;
     private Session acmeSession;
-
+    private Account account;
+    private List<Order> pendingOrders;
+    private ApacheConfigReader apacheConfig;
 
     public AcmeTpm() throws AcmeTpmException {
-        System.out.println("BASEPATH: " + BASEPATH.toString());
         // Verify the properties file
-        try {
-            props = new PropLoader();
-            tokenPassword = props.getTokenPassword();
-        } catch (AcmeTpmException e) {
-            throw new AcmeTpmException(e.getMessage());
-        }        
+        props = new PropLoader();
+        tokenPassword = props.getTokenPassword();
+
 
         // Load the TPM Keystore
-        try {
-            tpmProvider = new TpmProvider(tokenPassword, TPM_JCA_CONFIG.toString());
-        } catch (AcmeTpmException e) {
-            throw new AcmeTpmException(e.getMessage());
-        }
+        tpmProvider = new TpmProvider(tokenPassword, TPM_JCA_CONFIG.toString());
+
 
         // Parse the EJBCA URI 
         try {
             caUri = new URI(props.getProp("ejbca.sessionUri"));
         } catch (URISyntaxException e) {
-            throw new AcmeTpmException("Invalid URI provided: " + props.getProp("ejbca.sessionUri"));
+            throw new AcmeTpmException("Invalid URI provided for CA: " + props.getProp("ejbca.sessionUri"));
         }
 
         // Get our customized provider
         AcmeProvider idmsProvider = new IdmsAcmeProvider(getSSLContext());
+        
 
         // Create the session
         acmeSession = new Session(caUri, idmsProvider);
+
+        // Get the account
+        account = getUserAccount();
+
+        // Read the apache configuration
+        apacheConfig = new ApacheConfigReader();
     }
 
+    public HashMap<String, HashMap<String, String>> listApacheVirtualHosts() throws AcmeTpmException {
+        HashMap<String, HashMap<String, String>> apacheVhosts = new HashMap<>();
+        for (String vhost: apacheConfig.getVHosts()) {
+            HashMap<String,String> vhostConfig = new HashMap<>();
+            vhostConfig.put("Document Root", apacheConfig.getDocumentRootforVHost(vhost));
+            vhostConfig.put("Private Key Location", apacheConfig.getKeyLocationForVHost(vhost));
+            vhostConfig.put("Certificate Location", apacheConfig.getCertLocationforVHost(vhost));
+            apacheVhosts.put(vhost, vhostConfig);
+        }
+        return apacheVhosts;
+    }
+
+    /**
+     * Function to test connectivity to the ACME server by hitting the metadata endpoint
+     * @return A HashMap of the metadata key/values
+     * @throws AcmeTpmException
+     */
     public HashMap<String, String> testAcmeConnection() throws AcmeTpmException {
         HashMap<String, String> metadataProps = new HashMap<>();
         try {
@@ -94,9 +123,14 @@ public class AcmeTpm {
         }
     }
 
+    /**
+     * Gets or creates the user account 
+     * @return
+     * @throws AcmeTpmException
+     */
     private Account getUserAccount() throws AcmeTpmException {
-        // TODO: Not sure this is quite correct - especially the round trip to login and retrieve
-        // the account from the URL. Expensive!
+        // TODO: Not sure this is quite correct - especially the round trip to login 
+        // and retrieve the account from the URL. Expensive!
         String accountURLProp = props.getProp("acme.accountURL");
         Account userAccount;
 
@@ -119,20 +153,21 @@ public class AcmeTpm {
 
     }
 
-    // private Account requestAcmeAccount(String email) throws AcmeTpmException {
-    //     AccountBuilder accountBuilder = new AccountBuilder()
-    //                 .agreeToTermsOfService()
-    //                 .withKeyIdentifier(tokenPassword, tokenPassword);
+    private Account requestAcmeAccount(String email) throws AcmeTpmException {
+        AccountBuilder accountBuilder = new AccountBuilder()
+                    .agreeToTermsOfService()
+                    .useKeyPair(tpmProvider.getUserKeyPair());
         
-    //     accountBuilder.addEmail(email);
-    //     try {
-    //         Account account = accountBuilder.create(acmeSession);
-    //     } catch (AcmeException e) {
-    //         throw new AcmeTpmException("Unable to create account: " + e.getMessage());
-    //     }
-    // }
+        accountBuilder.addEmail(email);
+        try {
+            Account account = accountBuilder.create(acmeSession);
+            return account;
+        } catch (AcmeException e) {
+            throw new AcmeTpmException("Unable to create account: " + e.getMessage());
+        }
+    }
 
-    public void requestDomainCertificate(String csr) throws AcmeTpmException {
+    public void requestDomainCertificate(byte[] csrDER) throws AcmeTpmException {
         
         // TODO: call the custom proxy to confirm everything is in place
 
@@ -174,15 +209,26 @@ public class AcmeTpm {
      * @throws AcmeTpmException
      */
     public String generateUserCSR() throws AcmeTpmException {
-        return tpmProvider.getCsrPem(props.getProp("token.userAlias"));
+        return tpmProvider.getCertRequestPEM(props.getProp("token.userAlias"));
     }
 
+    /**
+     * Updates the certificate associated with the Acme User account
+     * @param certPEM
+     * @throws AcmeTpmException
+     */
     public void updateUserCert(String certPEM) throws AcmeTpmException {
         tpmProvider.updateCertificate(props.getProp("token.userAlias"), certPEM);
     }
 
-    public String generateCSR(String domain) throws AcmeTpmException {
-        var domainCertRequest = tpmProvider.getCsrPem(domain);
+    /**
+     * Generates a CSR for a domain. Returns byte[] for use by the acme server.
+     * @param domain
+     * @return
+     * @throws AcmeTpmException
+     */
+    public byte[] generateDomainCSR(String domain) throws AcmeTpmException {
+        var domainCertRequest = tpmProvider.getCertRequestDER(domain);
         return domainCertRequest;
     }
 
@@ -204,6 +250,12 @@ public class AcmeTpm {
         }
     }
 
+    /**
+     * Checks for a keypair associated with an alias
+     * @param alias to check for in the TPM keystore
+     * @return true if alias exists, false otherwise
+     * @throws AcmeTpmException
+     */
     public boolean hasKeyPair(String alias) throws AcmeTpmException {
         return tpmProvider.hasAlias(alias);
     }
@@ -230,16 +282,169 @@ public class AcmeTpm {
     public void addDomain(String domain) throws AcmeTpmException {
         try {
             tpmProvider.addKeyPair(domain);
-            Account account = getUserAccount();
-            Order domainOrder = account.newOrder().domain(domain).create();
-            for (var authorization: domainOrder.getAuthorizations()) {
-                // Perform Authorization
-            }
-            domainOrder.execute(tpmProvider.getCertRequestDER(domain));
-            Status status = 
-        } catch (AcmeTpmException | AcmeException e) {
+        } catch (AcmeTpmException e) {
             throw new AcmeTpmException("Unable to order certificate for " + domain + ": " + e.getMessage());
         }
+    }
+
+    /**
+     * Submits a certificate request for a domain to an ACME server
+     * @param domain the domain to submit the request for
+     * @param request the CSR as a DER encoded byte[]
+     * @throws AcmeTpmException
+     */
+    public void submitRequest(String domain, byte[] request) throws AcmeTpmException {
+        Order domainOrder;
+
+        try {
+            domainOrder = account.newOrder().domain(domain).create();
+        } catch (AcmeException e) {
+            throw new AcmeTpmException("Unable to initialize order for " + domain + ": " + e.getMessage());
+        }
+
+        processOrder(domainOrder);
+
+    }
+
+    private void processOrder(Order order) throws AcmeTpmException {
+        switch (order.getStatus()) {
+            case PENDING:
+                // check and fulfill authorizations
+                processAuthorizations(order.getAuthorizations());
+                break;
+            case READY:
+                // finalize order
+                break;
+            case PROCESSING:
+                // wait - careful about recursive calls!
+                break;
+            case VALID:
+                // fetch certificate
+                break;
+            case INVALID:
+                // order failed - cancel
+                break;
+            default:
+                throw new AcmeTpmException("Unrecognized order status: " + order.getStatus().toString());
+        }
+    }
+
+    private void processAuthorizations(List<Authorization> authorizations) throws AcmeTpmException {
+        for (var authorization: authorizations) {
+            switch (authorization.getStatus()) {
+                case PENDING:
+                    String domain = authorization.getIdentifier().getDomain();
+                    processChallenges(domain, authorization.getChallenges());
+                    break;
+                case EXPIRED:
+                    // retry order?
+                    break;
+                case DEACTIVATED:
+                    // retry order?
+                    break;
+                case REVOKED:
+                    // retry order?
+                    break;
+                case INVALID:
+                    // retry order?
+                    break;
+                case VALID:
+                    // wait and then end, so that the calling function can retry
+                    break;
+                default:
+                throw new AcmeTpmException("Unrecognized authorization status: " + authorization.getStatus().toString());
+            }
+        }
+    }
+
+    private void processChallenges(String domain, List<Challenge> challenges) throws AcmeTpmException {
+        for (var challenge: challenges) {
+            switch (challenge.getStatus()) {
+                case PENDING:
+                    processChallenge(domain, challenge);
+                    break;
+                case PROCESSING:
+                    // wait
+                    break;
+                case INVALID:
+                    // throw error 
+                    break;
+                case VALID:
+                    // return to caller, so that the caller can fetch the certificate
+                    break;
+                default:
+                    throw new AcmeTpmException("Unrecognized challenge status: " + challenge.getStatus().toString());
+            }
+        }
+
+    }
+
+    private void processChallenge(String domain, Challenge challenge) throws AcmeTpmException {
+        switch (challenge.getType()) {
+            case "http-01":
+                processHttpChallenge(domain, (Http01Challenge) challenge);
+                break;
+            // Can't process DNS challenges until proxy is completed.
+            // case "dns-01":
+            //     processDnsChallenge(domain, (Dns01Challenge) challenge);
+            //     break;
+            default:
+                throw new AcmeTpmException("Challenge type " + challenge.getType() + " unrecognized or unimplemented.");
+        }
+
+    }
+
+    /**
+     * Process a pending HTTP challenge
+     * @param challenge
+     * @throws AcmeTpmException
+     */
+    private void processHttpChallenge(String domain, Http01Challenge challenge) throws AcmeTpmException {
+        // If we got here, the status is pending and the type is HTTP, so we just need to create the expected file.
+        String token = challenge.getToken();
+        
+        Path authorizationResourcePath = Path.of(apacheConfig.getDocumentRootforVHost(domain));
+        ApacheHTTPAuthz.writeAuthzFile(authorizationResourcePath, token);
+        
+    }
+
+
+    /**
+     * Process a DNS challenge, and add or update the dnsChallenge list
+     * @param domain
+     * @param dnsChallenge
+     * @throws AcmeTpmException
+     */
+    private void processDnsChallenge(Dns01Challenge dnsChallenge) throws AcmeTpmException {
+        switch (dnsChallenge.getStatus()) {
+            case PENDING: // Server has not completed the authorization.
+            case PROCESSING: // Validation completed, system processing
+            case VALID: // Authorizations are successful. Finalize the order.                
+                // challenges.put(
+                //     domain, 
+                //     new DnsChallengeTracker(
+                //         Dns01Challenge.toRRName(domain), 
+                //         dnsChallenge.getDigest(), 
+                //         dnsChallenge.getStatus().toString()
+                //     )
+                // );
+                break;
+            case INVALID: // Authorizations Expired. Throw an error
+                throw new AcmeTpmException("Challenge processed, but invalid.");
+            default:
+                throw new AcmeTpmException(
+                    "Unrecognized challenge status: " + dnsChallenge.getStatus().toString()
+                );
+        }
+    }
+
+    public void fetchAndInstallCertificate(String domain) {
+        // Dns01Challenge
+        // try {
+            
+        // } catch (Exception e) {
+        //     // TODO: handle exception
+        // }
     }
 
     /**

@@ -21,11 +21,18 @@ public class ApacheConfigReader {
         "//VirtualHost[arg = \"{{VHOST}}\"]/directive[\"SSLCertificateFile\"]/arg";
     private static final String SSL_PRIVATE_KEY_PATH = AUGEAS_ROOT + 
         "//VirtualHost[arg = \"{{VHOST}}\"]/directive[\"SSLCertificateKeyFile\"]/arg";
+    private static final String BASE_DOCUMENT_ROOT = AUGEAS_ROOT +
+        "//directive[\"DocumentRoot\"]";
+    private static final String VHOST_DOCUMENT_ROOT = AUGEAS_ROOT + 
+        "//VirtualHost[arg = \"{{VHOST}}\"]/directive[\"DocumentRoot\"]/arg";
 
-    // Inner class for keeping a cert/key pair
+    private static String baseDocumentConfigRoot = null;
+
+    // Inner class for keeping a cert/key pair and documentRoot
     public record ApacheVirtualHostConfig(
         String sslCertificatePath,
-        String sslPrivateKeyPath
+        String sslPrivateKeyPath,
+        String documentRoot
     ) {}
 
     // HashMap for supported configs. Key is Virtual Host name, value is a the inner class just above.
@@ -50,6 +57,11 @@ public class ApacheConfigReader {
             this.configs.put(host, getConfigForHost(host));
         }
 
+        // Get the base DocumentRoot in case it is not defined in a vHost
+        if (augInstance.exists(BASE_DOCUMENT_ROOT)) {
+            baseDocumentConfigRoot = augInstance.get(BASE_DOCUMENT_ROOT);
+        }
+
     }
 
     /**
@@ -70,7 +82,7 @@ public class ApacheConfigReader {
     }
 
     /**
-     * Returns the path identifying the location of the private key for a Virtual Host
+     * Returns the string describing the path of of the private key for a Virtual Host
      * @param vHost the Virtual Host for which we want the location of the private key
      * @return the location of the private key from the configuration file
      */
@@ -79,12 +91,21 @@ public class ApacheConfigReader {
     }
 
     /**
-     * Returns the path identifying the location of the public key certificate for a Virtual Host
+     * Returns the string describing the path of the public key certificate for a Virtual Host
      * @param vHost the Virtual Host for which we want the location of the public key certificate
      * @return the location of the public key certificate from the configuration file
      */
     public final String getCertLocationforVHost(String vHost) {
         return this.configs.get(vHost).sslCertificatePath;
+    }
+
+    /**
+     * Returns the string describing the path of the documentRoot for a Virtual Host
+     * @param vHost the Virtual Host for which we want the location of the public key certificate
+     * @return the location of the public key certificate from the configuration file
+     */
+    public final String getDocumentRootforVHost(String vHost) {
+        return this.configs.get(vHost).documentRoot;
     }
 
     /**
@@ -119,21 +140,30 @@ public class ApacheConfigReader {
      * @return an ApacheVirtualHostConfig object containing the private key and public key certificate paths
      */
     private ApacheVirtualHostConfig getConfigForHost(String vHost) {
-        String sslCertificateConfigPath = SSL_SERVER_CERT_PATH.replace("{{VHOST}}", vHost);
         String sslCertificateLocation = "";
 
-        String sslPrivateKeyConfigPath = SSL_PRIVATE_KEY_PATH.replace("{{VHOST}}", vHost);
-        String sslPrivateKeyLocation = "";
-
+        String sslCertificateConfigPath = SSL_SERVER_CERT_PATH.replace("{{VHOST}}", vHost);
         if (augInstance.exists(sslCertificateConfigPath)) {
             sslCertificateLocation = augInstance.get(sslCertificateConfigPath);
         }
 
+        String sslPrivateKeyLocation = "";
+
+        String sslPrivateKeyConfigPath = SSL_PRIVATE_KEY_PATH.replace("{{VHOST}}", vHost);
         if (augInstance.exists(sslPrivateKeyConfigPath)) {
             sslPrivateKeyLocation =  augInstance.get(sslPrivateKeyConfigPath);
         }
 
-        return new ApacheVirtualHostConfig(sslCertificateLocation, sslPrivateKeyLocation);
+        String documentRoot = null;
+
+        String documentRootConfigPath = VHOST_DOCUMENT_ROOT.replace("{{VHOST}}", vHost);
+        if (augInstance.exists(documentRootConfigPath)) {
+            documentRoot = augInstance.get(documentRootConfigPath);
+        } else {
+            documentRoot = baseDocumentConfigRoot;
+        }
+
+        return new ApacheVirtualHostConfig(sslCertificateLocation, sslPrivateKeyLocation, documentRoot);
     }
 
     public void updateConfigForHost(String vHost, String certPath, String keyPath) {

@@ -3,11 +3,8 @@ package gov.dot.faa.ang.idms;
 import gov.dot.faa.ang.idms.acmetpm.AcmeTpm;
 import gov.dot.faa.ang.idms.acmetpm.AcmeTpmException;
 import gov.dot.faa.ang.idms.acmetpm.PropLoader;
-import gov.dot.faa.ang.idms.acmetpm.acme.IdmsAcmeProvider;
 
 import java.io.Console;
-import java.net.URI;
-import java.net.URISyntaxException;
 import java.util.Scanner;
 
 import java.util.Date;
@@ -37,7 +34,6 @@ class App implements Callable<Integer> {
 
     @Option(names = {"-i", "--input"}, paramLabel = "Input", description = "Input for an object that requires input.")
 
-    static PropLoader props;
     static AcmeTpm acmeTpm;
 
     // Error codes for return functions.
@@ -81,29 +77,32 @@ class App implements Callable<Integer> {
             case "diagnostic":
                 return Diagnostic();
 
-            case "list":
+            case "listdomains":
                 return listDomains();
 
-            case "info":
+            case "printdomaininfo":
                 if (domain == null) {
                     return printAllInfo();
                 } else {
                     return printDomainInfo(domain);
                 }
 
-            case "listexpiring":
+            case "listexpiringdomains":
                 return getExpiringDomains(expirationDate);
 
-            case "add":
+            case "adddomain":
                 return addDomain(domain);
 
-            case "delete":
+            case "deletedomain":
                 return deleteDomain(domain);
 
-            case "request":
-                return requestCertificate(domain);
+            case "requestdomaincert":
+                return requestDomainCert(domain);
 
-            case "revoke":
+            case "updatedomain":
+                //return r(domain);
+
+            case "revokedomain":
                 return revokeCertificate(domain);
 
             default:
@@ -139,6 +138,14 @@ class App implements Callable<Integer> {
                 System.out.println("KEY: " + key + " / VALUE: " + metadataValues.get(key));
             }
 
+            var vhostConfigs = acmeTpm.listApacheVirtualHosts();
+    
+            for (String vhost: vhostConfigs.keySet()) {
+                System.out.println("Virtual Host: " + vhost);
+                for (var entry: vhostConfigs.get(vhost).entrySet()) {
+                    System.out.println("\t" + entry.getKey() + ": " + entry.getValue());
+                }
+            }
 
             return SUCCESS;
         } catch (AcmeTpmException e) {
@@ -169,13 +176,18 @@ class App implements Callable<Integer> {
         try {
             String csr = acmeTpm.generateUserCSR();
             System.out.println(csr);
+            return SUCCESS;
         } catch (AcmeTpmException e) {
             System.err.println("Unable to generate user private key and CSR: " + e.getMessage());;
             return FAIL;
         }
-        return SUCCESS;
     }
 
+    /**
+     * Prompts the user to paste a CERT in PEM format and updates the user
+     * keystore with the new cert.
+     * @return
+     */
     private int installUserCert() {
         try {
             Console console = System.console();
@@ -225,7 +237,7 @@ class App implements Callable<Integer> {
 
     /**
      * Print a list of managed domains, or a message indicating that no domains are
-     * registered.
+     * managed.
      * 
      * @return SUCCESS(0) if we were able to get a list, or FAIL(0) if we weren't
      *         able to get a list
@@ -251,8 +263,7 @@ class App implements Callable<Integer> {
 
     /**
      * Print information for all domains under management. Calls getManagedDomains
-     * and then calls printDomainInfo for
-     * each domain
+     * and then calls printDomainInfo for each domain
      * 
      * @return SUCCESS(0) if able to print info or FAIL(1) if an exception is raised
      *         while trying.
@@ -276,7 +287,7 @@ class App implements Callable<Integer> {
     }
 
     /**
-     * Prints information about the keypairs and certificats for one of the domains
+     * Prints information about the keypairs and certificates for one of the domains
      * under management
      * 
      * @param domainString - a string representing a domain, usually a hostname
@@ -336,7 +347,7 @@ class App implements Callable<Integer> {
 
     /**
      * Add a domain to the list of managed domains. This does not automatically
-     * request a certificate for the domain
+     * request a certificate for the domain from the ACME server
      * 
      * @param domain - domain identifier to add (usually hostname)
      * @return SUCCESS(0) if able to add domain or FAIL(1) if an exception is raised
@@ -347,14 +358,36 @@ class App implements Callable<Integer> {
             System.out.print("Generating and storing keypair for  " + domain + "...");
             acmeTpm.addDomain(domain);
             System.out.println("done.");
-            
+            return SUCCESS;
+        } catch (Exception e) {
+            System.err.println("Unable to add " + domain + " to managed Domains: " + e.getMessage());
+            return FAIL;
+        }
+    }
+
+    /**
+     * Request a certificate for a managed domain. This automatically
+     * requests a certificate for the domain from the ACME server
+     * 
+     * @param domain - domain identifier to add (usually hostname)
+     * @return SUCCESS(0) if able to add domain or FAIL(1) if an exception is raised
+     *         while trying.
+     */
+    private static int requestDomainCert(String domain) {
+        try {
             System.out.print("Generating CSR for " + domain + "...");
-            var certReq = acmeTpm.generateCSR(domain);
+            var certReq = acmeTpm.generateDomainCSR(domain);
             System.out.println("done.");
 
-            System.out.print("Submitting request to ACME server ...");        
-            
+            System.out.print("Submitting request to ACME server ..."); 
+            // var dnsChallengeMap = acmeTpm.submitRequest(domain, certReq);  
             System.out.println("done.");
+
+            System.out.print("Attempting to set DNS record.");
+            // TODO: Implement
+            System.out.println("done.");
+
+
             return SUCCESS;
         } catch (Exception e) {
             System.err.println("Unable to add " + domain + " to managed Domains: " + e.getMessage());
@@ -378,7 +411,6 @@ class App implements Callable<Integer> {
         // TODO: fix this
         return SUCCESS;
     }
-    // Shared utility functions-
 
     /**
      * main
@@ -386,13 +418,7 @@ class App implements Callable<Integer> {
      * @param args
      */
     public static void main(String[] args) {
-        try {
-            props = new PropLoader();
-        } catch (AcmeTpmException e) {
-            System.out.println("Could not load properties file: " + e.getMessage());
-            System.exit(1);
-        }
-
+        System.out.println("Initializing AcmeTPM class object.");
         try {
             acmeTpm = new AcmeTpm();
         } catch (AcmeTpmException e) {

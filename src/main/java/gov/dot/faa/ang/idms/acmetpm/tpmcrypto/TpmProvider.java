@@ -122,7 +122,7 @@ public class TpmProvider {
                 // Look for the KeyPair in the Token Keystore
                 keypair = getKeyPair(USER_ALIAS);
                 logger.debug("Completed loading userKeyPair from keystore - returning.");
-                if (keypair != null) {
+                if (keypair == null) {
                     logger.debug("User keypair did not exist, creating it.");
                     keypair = newKeyPair();
                     storeKeyPair(USER_ALIAS, keypair);
@@ -378,15 +378,15 @@ public class TpmProvider {
         try {
             // Look for the KeyPair in the Token Keystore
             if (this.tpmKeyStore.containsAlias(alias)) {
-                logger.debug("Found userKeyPair in Keystore, retrieving");
-                PublicKey userPubKey = this.tpmKeyStore.getCertificate(alias).getPublicKey();
+                logger.debug("Found keyPair alias " + alias + " in Keystore, retrieving");
+                PublicKey pubKey = this.tpmKeyStore.getCertificate(alias).getPublicKey();
 
-                PrivateKey userPrivKey = ((PrivateKeyEntry) this.tpmKeyStore.getEntry(alias,
+                PrivateKey prvKey = ((PrivateKeyEntry) this.tpmKeyStore.getEntry(alias,
                         this.tokenPassword)).getPrivateKey();
 
-                this.userKeyPair = new KeyPair(userPubKey, userPrivKey);
                 logger.debug("Completed loading userKeyPair from keystore - returning.");
-                return this.userKeyPair;
+                
+                return new KeyPair(pubKey, prvKey);
             } else {
                 throw new AcmeTpmException("Unable to find keypair for " + alias);
             }
