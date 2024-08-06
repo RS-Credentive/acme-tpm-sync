@@ -1,58 +1,54 @@
 package gov.dot.faa.ang.idms.acmetpm;
 
+import java.io.File;
+import java.io.IOException;
+import java.io.InputStream;
+import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.HashMap;
+import java.util.Properties;
 
 public class PropLoader {
-    public static HashMap<String,String> props = new HashMap<String,String>();
-    private static Path propFileLocation = Path.of(""); // What should this be?
+    public static Properties props;
+    private static Path propFileLocation = Path.of("etc", "acmetpm", "acmetpm.properties");
 
     public PropLoader() throws AcmeTpmException {
         if (props.size() == 0) {
+            setDefaultProperties();
             initialize(propFileLocation);
         }
     }
 
-    private static final void fakeInitialize() {
-        // This is a fake method so I can use the PropLoader before determining the file location and other stuff
-        props.put("ejbca.addresses", "10.23.4.193|10.27.33.94|10.22.65.8|10.22.65.4");
-        props.put("ejbca.sessionUri", "https://10.22.65.12");
-        props.put("token.label", "label");
-        props.put("token.password", "myuserpin");
-        props.put("token.libraryPath", "/usr/lib64/pkcs11/libtpm2_pkcs11.so");
-        props.put("domains.renewalLimit", "90");
-        props.put("token.userAlias","userKeyPair");
-        props.put("token.truststore", "/home/robert.ctr.sherwood/Projects/idmsTrustStore.p12"); // where is this?
-        props.put("token.jcaConfigFile", "/home/robert.ctr.sherwood/Projects/acmetpm.conf");
-        props.put("acme.accountURL", null);
-        props.put("acme.userEmail", "robert.ctr.sherwood@faa.gov");
+    private static final void setDefaultProperties() throws AcmeTpmException {
+        try {
+            var defaultPropStream = PropLoader.class.getResourceAsStream("/default.properties");
+            props.load(defaultPropStream);
+        } catch (IOException e) {
+            throw new AcmeTpmException("Unable to load default properties from resource");
+        }
     }
 
     private static void initialize(Path propFile) throws AcmeTpmException {
-        fakeInitialize();
-        // Properties defaultProps = new Properties();
-        // try{
-        //     InputStream in = Files.newInputStream(propFile);
-        //     defaultProps.load(in);
-        //     in.close();
-        // } catch (IOException ex) {
-        //     throw new AcmeTpmException(
-        //         "Unable to open properties file. Expecting it at " + propFile.toString()
-        //         );
-        // }
-
-        // for (String key: defaultProps.stringPropertyNames()) {
-        //     props.put(key, defaultProps.getProperty(key, null));
-        // }
+        try{
+            InputStream in = Files.newInputStream(propFile);
+            props.load(in);
+            in.close();
+        } catch (IOException ex) {
+            throw new AcmeTpmException(
+                "Unable to open properties file. Expecting it at " + propFile.toString()
+                );
+        }
     }
 
-    public String getProp(String propName) {
+    public String getTokenPassword() throws AcmeTpmException {
+        return getProp("token.password");
+    }
+
+    public String getProp(String propName) throws AcmeTpmException {
         if (props.containsKey(propName)) {
-            return props.get(propName);
+            return props.getProperty(propName);
         } else {
-            return null;
+            throw new AcmeTpmException("No property named " + propName);
         }
-        
     }
 
     public void setProp(String propName, String value) {
@@ -62,22 +58,4 @@ public class PropLoader {
     public boolean hasProp(String propName) {
         return props.containsKey(propName);
     }
-
-    public String[] getEjbcaServers() throws AcmeTpmException {
-        if (props.keySet().contains("ejbca.addresses")) {
-            return props.get("ejbca.addresses").split("|");
-        } else {
-            throw new AcmeTpmException("Property file does not contain Server hostnames.");
-        }
-
-    }
-
-    public String getTokenPassword() throws AcmeTpmException {
-        if (props.keySet().contains("token.password")) {
-            return props.get("token.password");
-        } else {
-            throw new AcmeTpmException("No token password in props file.");
-        }
-    }
-
 }
