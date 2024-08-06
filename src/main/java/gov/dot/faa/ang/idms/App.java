@@ -93,11 +93,14 @@ class App implements Callable<Integer> {
             case "adddomain":
                 return addDomain(domain);
 
+            case "checkorders":
+                return checkOrders();
+
             case "deletedomain":
                 return deleteDomain(domain);
 
-            case "requestdomaincert":
-                return requestDomainCert(domain);
+            // case "requestdomaincert":
+            //     return requestDomainCert(domain);
 
             case "updatedomain":
                 //return r(domain);
@@ -186,7 +189,7 @@ class App implements Callable<Integer> {
     /**
      * Prompts the user to paste a CERT in PEM format and updates the user
      * keystore with the new cert.
-     * @return
+     * @return SUCCESS(0) or FAIL(1)
      */
     private int installUserCert() {
         try {
@@ -366,34 +369,20 @@ class App implements Callable<Integer> {
     }
 
     /**
-     * Request a certificate for a managed domain. This automatically
-     * requests a certificate for the domain from the ACME server
-     * 
-     * @param domain - domain identifier to add (usually hostname)
-     * @return SUCCESS(0) if able to add domain or FAIL(1) if an exception is raised
-     *         while trying.
+     * Login to check the status of orders and respond appropriately.
+     * @return
      */
-    private static int requestDomainCert(String domain) {
+    private static int checkOrders() {
         try {
-            System.out.print("Generating CSR for " + domain + "...");
-            var certReq = acmeTpm.generateDomainCSR(domain);
-            System.out.println("done.");
-
-            System.out.print("Submitting request to ACME server ..."); 
-            // var dnsChallengeMap = acmeTpm.submitRequest(domain, certReq);  
-            System.out.println("done.");
-
-            System.out.print("Attempting to set DNS record.");
-            // TODO: Implement
-            System.out.println("done.");
-
-
-            return SUCCESS;
-        } catch (Exception e) {
-            System.err.println("Unable to add " + domain + " to managed Domains: " + e.getMessage());
+            acmeTpm.checkOrders();
+        } catch (AcmeTpmException e) {
+            System.err.println("Error checking orders: " + e.getMessage());
             return FAIL;
         }
+        return SUCCESS;
+
     }
+
 
     /**
      * Deletes a domain from the list of managed domains. This does not

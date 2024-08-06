@@ -1,25 +1,21 @@
 package gov.dot.faa.ang.idms.acmetpm;
 
-import java.io.File;
 import java.net.URL;
 import java.net.MalformedURLException;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.nio.file.FileSystems;
 import java.nio.file.Path;
-import java.security.KeyPair;
+import java.security.cert.X509Certificate;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
-import java.util.Optional;
-
 import javax.net.ssl.SSLContext;
 
 import org.shredzone.acme4j.Session;
-import org.shredzone.acme4j.Status;
 import org.shredzone.acme4j.challenge.Challenge;
 import org.shredzone.acme4j.challenge.Http01Challenge;
 import org.shredzone.acme4j.challenge.Dns01Challenge;
@@ -29,6 +25,7 @@ import org.shredzone.acme4j.toolbox.JSON;
 import org.shredzone.acme4j.Account;
 import org.shredzone.acme4j.AccountBuilder;
 import org.shredzone.acme4j.Authorization;
+import org.shredzone.acme4j.Certificate;
 import org.shredzone.acme4j.Login;
 import org.shredzone.acme4j.Metadata;
 import org.shredzone.acme4j.Order;
@@ -57,8 +54,7 @@ public class AcmeTpm {
     private TpmProvider tpmProvider;
     private URI caUri;
     private Session acmeSession;
-    private Account account;
-    private List<Order> pendingOrders;
+    private Account acmeUserAccount;
     private ApacheConfigReader apacheConfig;
 
     public AcmeTpm() throws AcmeTpmException {
@@ -66,10 +62,8 @@ public class AcmeTpm {
         props = new PropLoader();
         tokenPassword = props.getTokenPassword();
 
-
         // Load the TPM Keystore
         tpmProvider = new TpmProvider(tokenPassword, TPM_JCA_CONFIG.toString());
-
 
         // Parse the EJBCA URI 
         try {
@@ -81,17 +75,23 @@ public class AcmeTpm {
         // Get our customized provider
         AcmeProvider idmsProvider = new IdmsAcmeProvider(getSSLContext());
         
-
         // Create the session
         acmeSession = new Session(caUri, idmsProvider);
 
         // Get the account
-        account = getUserAccount();
+        acmeUserAccount = getUserAccount();
 
         // Read the apache configuration
         apacheConfig = new ApacheConfigReader();
     }
 
+    /**
+     * Returns a list of virtual Hosts configured in Apache, to help adminsistrators identify the 
+     * domains to request
+     * @return a Map with a key of the vhost domain, and a value of the DocumentRoot, Private Key 
+     * and Certificate Locations.
+     * @throws AcmeTpmException
+     */
     public HashMap<String, HashMap<String, String>> listApacheVirtualHosts() throws AcmeTpmException {
         HashMap<String, HashMap<String, String>> apacheVhosts = new HashMap<>();
         for (String vhost: apacheConfig.getVHosts()) {
@@ -105,7 +105,7 @@ public class AcmeTpm {
     }
 
     /**
-     * Function to test connectivity to the ACME server by hitting the metadata endpoint
+     * Function to test connectivity to the ACME server by accessing the metadata endpoint
      * @return A HashMap of the metadata key/values
      * @throws AcmeTpmException
      */
@@ -149,8 +149,6 @@ public class AcmeTpm {
         }
         
         return userAccount;
-
-
     }
 
     private Account requestAcmeAccount(String email) throws AcmeTpmException {
@@ -167,169 +165,133 @@ public class AcmeTpm {
         }
     }
 
-    public void requestDomainCertificate(byte[] csrDER) throws AcmeTpmException {
-        
-        // TODO: call the custom proxy to confirm everything is in place
-
-        // TODO: Create the challenge (DNS first)
-
-        // Order Certificate 
-
-        // Poll status, retrieve certificate
-
-        // Install certificate in token
-
-        // Install Certificate in Server
-    }
-
-    /**
-     * Returns information related to keys 
-     * @param domainString
-     * @return
-     * @throws AcmeTpmException
-     */
-    public HashMap<String, String> getUserKeyInfo() throws AcmeTpmException {
-        return tpmProvider.getKeyInfo(props.getProp("token.userAlias"));
-    }
-
-    /**
-     * Returns information related to keys 
-     * @param domainString
-     * @return
-     * @throws AcmeTpmException
-     */
-    public HashMap<String, String> getKeyInfo(String domainString) throws AcmeTpmException {
-        return tpmProvider.getKeyInfo(domainString);
-    }
-
-    /**
-     * Generates a CSR for the userKeyPair and returns it as a PEM encoded string.
-     * @param keyPairAlias - the alias of the keypair for which to generate the CSR
-     * @return PEM encoded String representing the CSR.
-     * @throws AcmeTpmException
-     */
-    public String generateUserCSR() throws AcmeTpmException {
-        return tpmProvider.getCertRequestPEM(props.getProp("token.userAlias"));
-    }
-
-    /**
-     * Updates the certificate associated with the Acme User account
-     * @param certPEM
-     * @throws AcmeTpmException
-     */
-    public void updateUserCert(String certPEM) throws AcmeTpmException {
-        tpmProvider.updateCertificate(props.getProp("token.userAlias"), certPEM);
-    }
-
-    /**
-     * Generates a CSR for a domain. Returns byte[] for use by the acme server.
-     * @param domain
-     * @return
-     * @throws AcmeTpmException
-     */
-    public byte[] generateDomainCSR(String domain) throws AcmeTpmException {
-        var domainCertRequest = tpmProvider.getCertRequestDER(domain);
-        return domainCertRequest;
-    }
-
-    /**
-     * Prints information about the keypairs and certificats for one of the domains under management
-     * @param domainString - a string representing a domain, usually a hostname
-     * @return keys and information related to the keys
-     */
-    public HashMap<String, String> getDomainInfo(String domainString) throws AcmeTpmException {
+    public HashMap<String, ArrayList<String>> checkOrders() throws AcmeTpmException {
+        var orderStatus = new HashMap<String,ArrayList<String>>();
         try {
-            if (tpmProvider.hasAlias(domainString)) {
-                return tpmProvider.getKeyInfo(domainString);
-            } else {
-                // return an empty hashmap
-                return new HashMap<String, String>();
+            Account userAccount = getUserAccount();
+            var orders = userAccount.getOrders();
+            while (orders.hasNext()) {
+                var order = orders.next();
+                var result = processOrder(order);
+                for (var id: order.getIdentifiers()) {
+                    orderStatus.put(id.getDomain(), result);
+                }
             }
+            return orderStatus;
         } catch (AcmeTpmException e) {
-            throw new AcmeTpmException("Error while attempting to get info for domain " + domainString + ": " + e.getMessage());
+            throw new AcmeTpmException("Unable to check orders: " + e.getMessage());
         }
     }
 
-    /**
-     * Checks for a keypair associated with an alias
-     * @param alias to check for in the TPM keystore
-     * @return true if alias exists, false otherwise
-     * @throws AcmeTpmException
-     */
-    public boolean hasKeyPair(String alias) throws AcmeTpmException {
-        return tpmProvider.hasAlias(alias);
-    }
+    private String findDomainForOrder(Order order) throws AcmeTpmException {
+        String domainForOrder = null;
 
-    /**
-     * returns a list of managed domains, which may be an empty list.
-     * @return a list
-     */
-    public ArrayList<String> listDomains() throws AcmeTpmException {
-        try {
-            return tpmProvider.getDomains();
-        } catch (AcmeTpmException e) {
-            throw new AcmeTpmException("Error receieved while trying to list Domains: " + e.getMessage());
-        }
-    }
-
-    /**
-     * Adds a new domain to the managed domain list, generating and storing a key pair.
-     * Note that if the domain already exists, nothing changes and the keys are not modified.
-     * 
-     * @param domain
-     * @throws AcmeTpmException
-     */
-    public void addDomain(String domain) throws AcmeTpmException {
-        try {
-            tpmProvider.addKeyPair(domain);
-        } catch (AcmeTpmException e) {
-            throw new AcmeTpmException("Unable to order certificate for " + domain + ": " + e.getMessage());
-        }
-    }
-
-    /**
-     * Submits a certificate request for a domain to an ACME server
-     * @param domain the domain to submit the request for
-     * @param request the CSR as a DER encoded byte[]
-     * @throws AcmeTpmException
-     */
-    public void submitRequest(String domain, byte[] request) throws AcmeTpmException {
-        Order domainOrder;
-
-        try {
-            domainOrder = account.newOrder().domain(domain).create();
-        } catch (AcmeException e) {
-            throw new AcmeTpmException("Unable to initialize order for " + domain + ": " + e.getMessage());
+        // Iterate through the order ids to find the alias
+        ArrayList<String> orderDomains = new ArrayList<>();
+        for (var identifier: order.getIdentifiers()) {
+            orderDomains.add(identifier.getDomain());
+            if (tpmProvider.hasAlias(identifier.getDomain())) {
+                domainForOrder = identifier.getDomain();
+            }
         }
 
-        processOrder(domainOrder);
+        // If domainForOrder, the order is not associated with a managed domain. Throw an exception listing the domains.
+        if (domainForOrder == null) {
+            StringBuilder sb = new StringBuilder();
+            for (var identifier: orderDomains) {
+                sb.append(identifier + ", ");
+            }
+            // trim the final ", " from the end of the sequence.
+            sb.delete(sb.length() - 2, sb.length());
+            var domainString = sb.toString();
+            throw new AcmeTpmException("Order identifier does not correspond to any managed domain. Identifiers: " + domainString);
+        }
 
+        // Otherwise return domainForOrder
+        return domainForOrder;
     }
 
-    private void processOrder(Order order) throws AcmeTpmException {
+    private ArrayList<String> processOrder(Order order) throws AcmeTpmException {
+        var statusResults = new ArrayList<String>();
         switch (order.getStatus()) {
             case PENDING:
                 // check and fulfill authorizations
                 processAuthorizations(order.getAuthorizations());
+                statusResults.add("Order Pending - processed Authorizations");
                 break;
             case READY:
-                // finalize order
+                var orderStatus = finalizeOrder(order);
+                statusResults.add("Order ready - finalized.");
+                statusResults.add(orderStatus);
                 break;
             case PROCESSING:
-                // wait - careful about recursive calls!
+                // do nothing. try again later
+                statusResults.add("Order Processing - retry later");
                 break;
             case VALID:
                 // fetch certificate
+                updateDomainCertificate(order);
+                statusResults.add("Order Valid - installed certificate");
                 break;
             case INVALID:
                 // order failed - cancel
+                statusResults.add("Order Invalid - check and try again");
                 break;
             default:
                 throw new AcmeTpmException("Unrecognized order status: " + order.getStatus().toString());
         }
+        return statusResults;
     }
 
-    private void processAuthorizations(List<Authorization> authorizations) throws AcmeTpmException {
+    /**
+     * 
+     * @param order
+     * @return
+     */
+    private String finalizeOrder(Order order) throws AcmeTpmException {
+        byte[] domainCSR = null;
+        String domain = null;
+
+        // iterate through the identifiers and see if there is a match for a domain 
+        // under management - note we don't support multi-domain certs yet (TODO)
+        var orderIdentifiers = order.getIdentifiers();
+        for (var identifier: orderIdentifiers) {
+            if (tpmProvider.hasAlias(identifier.getDomain())) {
+                domain = identifier.getDomain();
+                domainCSR = tpmProvider.getCertRequestDER(identifier.getDomain());
+            } 
+        }
+
+        // If we didn't get a match, throw an exception.
+        if (domainCSR == null || domain == null) { // redundant checks, but they satisfy the linter.
+            throw new AcmeTpmException("Could not find a managed domain associated with the order " + order.toString());
+        }
+
+        // Otherwise, attempt to finalize the order.
+        try {
+            order.execute(domainCSR);
+            return("Executed order for domain" + domain);
+        } catch (AcmeException e) {
+            throw new AcmeTpmException("Unable to place order for " + order.toString());
+        }
+            
+    }
+
+
+    private void updateDomainCertificate(Order order) throws AcmeTpmException {
+        // get the domain for the certificate
+        String domain = findDomainForOrder(order);
+
+        // get the certificate from the order
+        X509Certificate certificate = order.getCertificate().getCertificate();
+
+        tpmProvider.updateCertificate(domain, certificate);
+    }
+
+
+
+    private ArrayList<String> processAuthorizations(List<Authorization> authorizations) throws AcmeTpmException {
+        var authorizationProcessingResults = new ArrayList<String>();
         for (var authorization: authorizations) {
             switch (authorization.getStatus()) {
                 case PENDING:
@@ -355,27 +317,32 @@ public class AcmeTpm {
                 throw new AcmeTpmException("Unrecognized authorization status: " + authorization.getStatus().toString());
             }
         }
+        return authorizationProcessingResults;
     }
 
-    private void processChallenges(String domain, List<Challenge> challenges) throws AcmeTpmException {
+    private ArrayList<String> processChallenges(String domain, List<Challenge> challenges) throws AcmeTpmException {
+        var challengeProcessingResults = new ArrayList<String>();
         for (var challenge: challenges) {
             switch (challenge.getStatus()) {
                 case PENDING:
-                    processChallenge(domain, challenge);
+                    challengeProcessingResults.add("CHALLENGES: Processing Pending Challenges");
+                    challengeProcessingResults.addAll(processChallenges(domain, challenges));
                     break;
                 case PROCESSING:
-                    // wait
+                    challengeProcessingResults.add("CHALLENGE: Status PROCESSING. Will check again on next run.");
                     break;
                 case INVALID:
-                    // throw error 
+                    challengeProcessingResults.add("CHALLENGE: Status INVALID. Certificate request will be restarted.");
                     break;
                 case VALID:
                     // return to caller, so that the caller can fetch the certificate
+                    challengeProcessingResults.add("CHALLENGE: Status VALID. Certificate will be fetched on next run.");
                     break;
                 default:
                     throw new AcmeTpmException("Unrecognized challenge status: " + challenge.getStatus().toString());
             }
         }
+        return challengeProcessingResults;
 
     }
 
@@ -438,15 +405,133 @@ public class AcmeTpm {
         }
     }
 
-    public void fetchAndInstallCertificate(String domain) {
-        // Dns01Challenge
-        // try {
-            
-        // } catch (Exception e) {
-        //     // TODO: handle exception
-        // }
+    /**
+     * Returns information related to the user key
+     * @param domainString
+     * @return a hashmap of property names and values.
+     * @throws AcmeTpmException
+     */
+    public HashMap<String, String> getUserKeyInfo() throws AcmeTpmException {
+        return tpmProvider.getKeyInfo(props.getProp("token.userAlias"));
     }
 
+    /**
+     * Returns information related to keys 
+     * @param domainString
+     * @return
+     * @throws AcmeTpmException
+     */
+    public HashMap<String, String> getKeyInfo(String domainString) throws AcmeTpmException {
+        return tpmProvider.getKeyInfo(domainString);
+    }
+
+    /**
+     * Generates a CSR for the userKeyPair and returns it as a PEM encoded string.
+     * @param keyPairAlias - the alias of the keypair for which to generate the CSR
+     * @return PEM encoded String representing the CSR.
+     * @throws AcmeTpmException
+     */
+    public String generateUserCSR() throws AcmeTpmException {
+        return tpmProvider.getCertRequestPEM(props.getProp("token.userAlias"));
+    }
+
+    /**
+     * Updates the certificate associated with the Acme User account
+     * @param certPEM
+     * @throws AcmeTpmException
+     */
+    public void updateUserCert(String certPEM) throws AcmeTpmException {
+        tpmProvider.updateCertificatePEM(props.getProp("token.userAlias"), certPEM);
+    }
+
+    /**
+     * Updates the certificate associated with a domain
+     * @param domain - the domain to be updated
+     * @param cert - the certificate provided by the ACME sever
+     * @throws AcmeTpmException
+     */
+    public void updateDomainCert(String domain, Certificate cert) throws AcmeTpmException {
+        tpmProvider.updateCertificate(domain, cert.getCertificate());
+    }
+
+    /**
+     * Generates a CSR for a domain. Returns byte[] for use by the acme server.
+     * @param domain
+     * @return
+     * @throws AcmeTpmException
+     */
+    public byte[] generateDomainCSR(String domain) throws AcmeTpmException {
+        return tpmProvider.getCertRequestDER(domain);
+    }
+
+    /**
+     * Prints information about the keypairs and certificats for one of the domains under management
+     * @param domainString - a string representing a domain, usually a hostname
+     * @return keys and information related to the keys
+     */
+    public HashMap<String, String> getDomainInfo(String domainString) throws AcmeTpmException {
+        try {
+            if (tpmProvider.hasAlias(domainString)) {
+                return tpmProvider.getKeyInfo(domainString);
+            } else {
+                // return an empty hashmap
+                return new HashMap<String, String>();
+            }
+        } catch (AcmeTpmException e) {
+            throw new AcmeTpmException("Error while attempting to get info for domain " + domainString + ": " + e.getMessage());
+        }
+    }
+
+    /**
+     * Checks for a keypair associated with an alias
+     * @param alias to check for in the TPM keystore
+     * @return true if alias exists, false otherwise
+     * @throws AcmeTpmException
+     */
+    public boolean hasKeyPair(String alias) throws AcmeTpmException {
+        return tpmProvider.hasAlias(alias);
+    }
+
+    /**
+     * returns a list of managed domains, which may be an empty list.
+     * @return a list
+     */
+    public ArrayList<String> listDomains() throws AcmeTpmException {
+        try {
+            return tpmProvider.getDomains();
+        } catch (AcmeTpmException e) {
+            throw new AcmeTpmException("Error receieved while trying to list Domains: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Adds a new domain to the managed domain list, generating and storing a key pair.
+     * Note that if the domain already exists, nothing changes and the keys are not modified.
+     * It initiates an order for a new certificate from the ACME server.
+     * 
+     * @param domain
+     * @throws AcmeTpmException
+     */
+    public void addDomain(String domain) throws AcmeTpmException {
+        try {
+            tpmProvider.addKeyPair(domain);
+            Order domainOrder = acmeUserAccount.newOrder().domain(domain).create();
+        } catch (AcmeTpmException | AcmeException e) {
+            throw new AcmeTpmException("Unable to order certificate for " + domain + ": " + e.getMessage());
+        }
+    }
+
+    // /**
+    //  * Submits a certificate request for a domain to an ACME server
+    //  * @param domain the domain to submit the request for
+    //  * @param request the CSR as a DER encoded byte[]
+    //  * @throws AcmeTpmException
+    //  */
+    // public void submitRequest(String domain, byte[] request) throws AcmeTpmException {
+
+    // }
+
+    
     /**
      * print a list of domains that will expire before the date provided
      * @param expirationDate - the expiration date to compare the domain certificates against. If not provided, it will be looked up in the property file.
