@@ -42,11 +42,11 @@ import gov.dot.faa.ang.idms.acmetpm.apacheconfig.ApacheHTTPAuthz;
  * @author robert.sherwood@credentive.com
  */
 public class AcmeTpm {
-    private static final Path ROOT_PATH = FileSystems.getDefault().getPath("").toAbsolutePath().getRoot();
-    private static final Path BASEPATH = ROOT_PATH.resolve(Path.of("home", "robert.ctr.sherwood", "Projects",
-            "acmetpm"));
-    private static final Path TPM_JCA_CONFIG = BASEPATH.resolve("acmetpm.conf");
-    private static final Path EJBCA_TRUSTSTORE = BASEPATH.resolve("idmsTrustStore.p12");
+    // private static final Path ROOT_PATH = FileSystems.getDefault().getPath("").toAbsolutePath().getRoot();
+    // private static final Path BASEPATH = ROOT_PATH.resolve(Path.of("home", "robert.ctr.sherwood", "Projects",
+    //         "acmetpm"));
+    // private static final Path TPM_JCA_CONFIG = BASEPATH.resolve("acmetpm.conf");
+    // private static final Path EJBCA_TRUSTSTORE = BASEPATH.resolve("idmsTrustStore.p12");
 
     public static String[] EJBCA_SERVERS;
     private static PropLoader props;
@@ -63,8 +63,11 @@ public class AcmeTpm {
         tokenPassword = props.getTokenPassword();
 
         // Load the TPM Keystore
-        tpmProvider = new TpmProvider(tokenPassword, TPM_JCA_CONFIG.toString());
+        tpmProvider = new TpmProvider(tokenPassword, props.getProp("token.jcaConfigFile"));
 
+    }
+
+    public void initialize() throws AcmeTpmException {
         // Parse the EJBCA URI 
         try {
             caUri = new URI(props.getProp("ejbca.sessionUri"));
@@ -144,7 +147,7 @@ public class AcmeTpm {
                 Login login = acmeSession.login(accountURL, tpmProvider.getUserKeyPair());
                 return login.getAccount();
             } catch (MalformedURLException e) {
-                throw new AcmeTpmException(accountURLProp);
+                throw new AcmeTpmException("Unable to generate URI from " + accountURLProp);
             }
         }
         
@@ -405,6 +408,10 @@ public class AcmeTpm {
         }
     }
 
+    public boolean userKeyExists() throws AcmeTpmException {
+        return tpmProvider.hasAlias(props.getProp("token.userAlias"));
+    }
+
     /**
      * Returns information related to the user key
      * @param domainString
@@ -432,6 +439,9 @@ public class AcmeTpm {
      * @throws AcmeTpmException
      */
     public String generateUserCSR() throws AcmeTpmException {
+        if (! hasKeyPair(props.getProp("token.userAlias"))) {
+            tpmProvider.addKeyPair(props.getProp("token.userAlias"));
+        }
         return tpmProvider.getCertRequestPEM(props.getProp("token.userAlias"));
     }
 
@@ -572,6 +582,6 @@ public class AcmeTpm {
      * @throws AcmeTpmException if the SSL Context cannot be created
      */
     public SSLContext getSSLContext() throws AcmeTpmException {
-        return tpmProvider.getSSLContext(EJBCA_TRUSTSTORE);
+        return tpmProvider.getSSLContext(Path.of(props.getProp("token.truststore")));
     }
 }
