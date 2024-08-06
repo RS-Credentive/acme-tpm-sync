@@ -45,7 +45,7 @@ This command lists provides usage information about the command. It is equivalen
 
 ## acmetpm userinit
 
-This command creates the user key pair if it does not exist, and outputs a certificate signing request. By default it reuses an existing private key.
+This command creates the user key pair if it does not exist, and outputs a certificate signing request. By default it reuses the existing user keypair.
 
 *Example: acmetpm userinit*
 
@@ -105,11 +105,20 @@ The "--domain" or "-d" flag must be provided.
 
 Note that this command does not automatically revoke the certificate associated with the domain. If revocation is required, it may be done out of band or via the [*acmetpm revoke*](#acmetpm-revoke) command.
 
-## acmetpm request
+## acmetpm manage
 
-This command attempts to request certificates for managed domains. It will automatically request certificates for any expiring domains.
+This command automatically performs the appropriate management task for a domain or set of domains.
 
-*mExaple: acmetpm request*
+* It identifies all managed domains that do not have a valid certificate and requests a certificate from the ACME Server.
+* It identifies all expiring domains and requests an updated certificate.
+* It checks all outstanding requests on the ACME server and processes them accordingly.
+    * If a challenge has been issued by the ACME server, it will satisfy the challenge.
+    * If a request has been processed by the ACME server, it will download and install the certificate.
+    * If a request has failed, it will notify the administrator.
+
+This command is designed to be run automatically on a timed basis by the server in order to maintain certificates for managed domains.
+
+*Exaple: acmetpm request*
 
 The "--domain" or "-d" flag may be provided to limit the requests to a single domain, and must be provided for a domain added with the [*acmetpm add*](#acmetpm-add) command.
 
