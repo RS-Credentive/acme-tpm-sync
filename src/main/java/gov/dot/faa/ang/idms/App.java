@@ -2,7 +2,6 @@ package gov.dot.faa.ang.idms;
 
 import gov.dot.faa.ang.idms.acmetpm.AcmeTpm;
 import gov.dot.faa.ang.idms.acmetpm.AcmeTpmException;
-import gov.dot.faa.ang.idms.acmetpm.PropLoader;
 
 import java.io.Console;
 import java.util.Scanner;
@@ -64,13 +63,39 @@ class App implements Callable<Integer> {
      * @return SUCCESS(0) or FAIL(0) as returned by the underlying method
      */
     private int processCommand() {
-        switch (commandString) {
-            case "help":
-                return printHelp();
+        if (commandString.equals("help")) {
+            return printHelp();
+        }
 
-            case "requestusercert":
+        // Everything else requires a TPM
+        System.out.println("Initializing AcmeTPM class object.");
+        try {
+            acmeTpm = new AcmeTpm();
+        } catch (AcmeTpmException e) {
+            System.err.println("Could not initialize acmeTpm: " + e.getMessage());
+            System.exit(1);
+        }
+
+        // Check for "requestusercert" first, in case the userkey doesn't exist
+        if (commandString.equals("requestusercert")) {
                 return requestUserCert();
+        }
 
+        
+        try {
+            if (acmeTpm.userKeyExists()) {
+                acmeTpm.initialize();
+            } else {
+                System.err.println("The user key does not exist on the TPM. Please call 'requestusercert' before using any other functionality.");
+                return FAIL;
+            }
+        } catch (AcmeTpmException e) {
+            System.err.println("Error checking for user key: " + e.getMessage());
+            return FAIL;
+        }
+
+
+        switch (commandString) {
             case "installusercert":
                 return installUserCert();
 
@@ -407,14 +432,6 @@ class App implements Callable<Integer> {
      * @param args
      */
     public static void main(String[] args) {
-        System.out.println("Initializing AcmeTPM class object.");
-        try {
-            acmeTpm = new AcmeTpm();
-        } catch (AcmeTpmException e) {
-            System.err.println("Could not initialize acmeTpm: " + e.getMessage());
-            System.exit(1);
-        }
-
         int exitCode = new CommandLine(new App()).execute(args);
         System.exit(exitCode);
     }
