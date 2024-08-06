@@ -402,17 +402,25 @@ public class TpmProvider {
      * @param alias the alias of the keypair to update
      * @param certHolder a certificateHolder object to be converted into a certificate and stored in the token.
      */
-    public void updateCertificate(String alias, String certPEM) throws AcmeTpmException {
-        // Accept a certificate and update the pkcs11 store with the cert in the right
-        // alias
-        try {
-            // Convert the String to a Certificate
-            Certificate cert = pemToCert(certPEM);
+    public void updateCertificatePEM(String alias, String certPEM) throws AcmeTpmException {
+        // Convert the String to a Certificate
+        Certificate cert = pemToCert(certPEM);
             
+        updateCertificate(alias, cert);
+    }
+
+    /**
+     * Call this function when an updated certificate is obtained from the ACME server, 
+     * It update the keypair in the token associated with the alias passed in.
+     * @param alias the alias of the keypair to update
+     * @param certHolder a certificateHolder object to be converted into a certificate and stored in the token.
+     */
+    public void updateCertificate(String alias, Certificate certificate) throws AcmeTpmException {
+        try {            
             // fetch the keystore entry
             if (tpmKeyStore.entryInstanceOf(alias, PrivateKeyEntry.class)) {
                 PrivateKeyEntry currentEntry = (PrivateKeyEntry) tpmKeyStore.getEntry(alias, tokenPassword);
-                PrivateKeyEntry newEntry = new PrivateKeyEntry(currentEntry.getPrivateKey(), new Certificate[] {cert});
+                PrivateKeyEntry newEntry = new PrivateKeyEntry(currentEntry.getPrivateKey(), new Certificate[] {certificate});
                 tpmKeyStore.setEntry(alias, newEntry, tokenPassword);
             } else {
                 try {
