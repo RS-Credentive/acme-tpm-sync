@@ -63,6 +63,7 @@ class App implements Callable<Integer> {
      * @return SUCCESS(0) or FAIL(0) as returned by the underlying method
      */
     private int processCommand() {
+        // We can give print the help message without setting anything up
         if (commandString.equals("help")) {
             return printHelp();
         }
@@ -81,12 +82,12 @@ class App implements Callable<Integer> {
                 return requestUserCert();
         }
 
-        
+        // This command requires the userkey to be present
         try {
             if (acmeTpm.userKeyExists()) {
                 acmeTpm.initialize();
             } else {
-                System.err.println("The user key does not exist on the TPM. Please call 'requestusercert' before using any other functionality.");
+                System.err.println("The user key does not exist on the TPM. Please call 'requestusercert' before using any other commands.");
                 return FAIL;
             }
         } catch (AcmeTpmException e) {
@@ -94,7 +95,7 @@ class App implements Callable<Integer> {
             return FAIL;
         }
 
-
+        // From here on, we can use the rest of the commands.
         switch (commandString) {
             case "installusercert":
                 return installUserCert();
@@ -124,9 +125,6 @@ class App implements Callable<Integer> {
             case "deletedomain":
                 return deleteDomain(domain);
 
-            // case "requestdomaincert":
-            //     return requestDomainCert(domain);
-
             case "updatedomain":
                 //return r(domain);
 
@@ -140,8 +138,15 @@ class App implements Callable<Integer> {
         }
     }
 
-    // Functions implementing command options
+    /**
+     * Functions implementing command options
+     */
 
+
+    /**
+     * Prints diagnostic information about the TPM and keystore
+     * @return
+     */
     private int Diagnostic() {
         try {
             // List user info
@@ -161,11 +166,14 @@ class App implements Callable<Integer> {
             listDomains();
             
             // List ACME metadata
+            System.out.println("Fetching ACME server metadata to confirm connectivity.");
             var metadataValues = acmeTpm.testAcmeConnection();
             for (String key: metadataValues.keySet()) {
                 System.out.println("KEY: " + key + " / VALUE: " + metadataValues.get(key));
             }
 
+            // Apache Virtual Hosts
+            System.out.println("Listing Apache Virtual Hosts configured.");
             var vhostConfigs = acmeTpm.listApacheVirtualHosts();
     
             for (String vhost: vhostConfigs.keySet()) {
@@ -394,12 +402,23 @@ class App implements Callable<Integer> {
     }
 
     /**
-     * Login to check the status of orders and respond appropriately.
+     * Login to check the status of orders and respond appropriately. A status is returned for each function.
      * @return
      */
     private static int checkOrders() {
         try {
-            acmeTpm.checkOrders();
+            System.out.println("Logging in and checking status of ACME Requests");
+            var orderStatus = acmeTpm.checkOrders();
+            if  (orderStatus.keySet().size() < 1) {
+                System.out.println("There are no ACME Requests in progress.");
+            }
+            for (var key: orderStatus.keySet()) {
+                System.out.println("ACME REQUEST: " + key);
+                for (var statusLine: orderStatus.get(key)) {
+                    System.out.println(statusLine);
+                }
+            }
+            
         } catch (AcmeTpmException e) {
             System.err.println("Error checking orders: " + e.getMessage());
             return FAIL;
