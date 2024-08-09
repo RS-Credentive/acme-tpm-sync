@@ -89,15 +89,20 @@ public class TpmProvider {
      */
     public TpmProvider(String tokenPassword, String jcaConfigFilePath) throws AcmeTpmException {
         try {
-            logger.debug("Intializing Token Provider");
+            logger.debug("Constructing Token Provider");
+
+            logger.debug("Loading BouncyCastle Provider");
             bcProvider = new BouncyCastleProvider();
             Security.addProvider(bcProvider);
+
+            logger.debug("Loading TPM PKCS11 Provider");
             logger.debug("Loading SunPKCS11 configuration from {}", jcaConfigFilePath);
             tpmProvider = Security.getProvider("SunPKCS11").configure("/" + jcaConfigFilePath);
             Security.addProvider(tpmProvider);
+
+            logger.debug("Loading Keystore from TPM backed token.");
             this.tpmKeyStore = KeyStore.getInstance("PKCS11-TpmAccelerator", tpmProvider);
             this.tokenPassword = new KeyStore.PasswordProtection(tokenPassword.toCharArray());
-            logger.debug("Loading Keystore from TPM backed token.");
             this.tpmKeyStore.load(null, this.tokenPassword.getPassword());
         } catch (KeyStoreException | NoSuchAlgorithmException | CertificateException | IOException ex) {
             throw new AcmeTpmException(ex.getMessage());
@@ -136,73 +141,72 @@ public class TpmProvider {
     }
 
     /**
-     * Returns a list of all domains managed in the TPM.
+     * Returns a list of all aliases managed in the TPM.
      * @return ArrayList<String>
      * @throws AcmeTpmException
      */
-    public ArrayList<String> getDomains() throws AcmeTpmException {
+    public ArrayList<String> getAliases() throws AcmeTpmException {
         try {
-            var domains = new ArrayList<String>();
-            var domainEnum = this.tpmKeyStore.aliases();
-            while (domainEnum.hasMoreElements()) {
-                var nextDomain = domainEnum.nextElement();
-                if (nextDomain.equals("userKeyPair")) {
+            var aliases = new ArrayList<String>();
+            var aliasEnum = this.tpmKeyStore.aliases();
+            while (aliasEnum.hasMoreElements()) {
+                var nextalias = aliasEnum.nextElement();
+                if (nextalias.equals("userKeyPair")) {
                 } else {
-                    domains.add(nextDomain);
+                    aliases.add(nextalias);
                 }
             }
-            return domains;
+            return aliases;
         } catch (KeyStoreException e) {
             throw new AcmeTpmException("Error enumerating key aliases: " + e.getMessage());
         }
     }
 
     /**
-     * Returns true if the domain is managed in the TPM backed token, or false if it is not. We check for the domain in the list of keystor aliases.
-     * @param String representing the domain name for the managed key
+     * Returns true if the alias is managed in the TPM backed token, or false if it is not. We check for the alias in the list of keystor aliases.
+     * @param String representing the alias name for the managed key
      * @return true if the keystore contains the alias, false if it does not.
      * @throws AcmeTpmException
      */
-    public boolean hasAlias(String domain) throws AcmeTpmException {
+    public boolean hasAlias(String alias) throws AcmeTpmException {
         try {
-            return this.tpmKeyStore.containsAlias(domain);
+            return this.tpmKeyStore.containsAlias(alias);
         } catch (KeyStoreException e) {
-            throw new AcmeTpmException("Unable to check for managed domain " + domain + ". Error: " + e.getMessage());
+            throw new AcmeTpmException("Unable to check for alias " + alias + ". Error: " + e.getMessage());
         }
     }
 
     /**
-     * Parses the certificate associated with a managed domain and returns the expiration date.
-     * @param domain to check
+     * Parses the certificate associated with an alias and returns the expiration date.
+     * @param alias to check
      * @return Date object corresponding to the certificate's expiration date.
      * @throws AcmeTpmException
      */
-    public Date domainCertExpiration(String domain) throws AcmeTpmException {
-        if (hasAlias(domain)) {
+    public Date aliasCertExpiration(String alias) throws AcmeTpmException {
+        if (hasAlias(alias)) {
             try {                
-                X509Certificate domainCert = (X509Certificate)this.tpmKeyStore.getCertificate(domain);
-                return domainCert.getNotAfter();
+                X509Certificate aliasCert = (X509Certificate)this.tpmKeyStore.getCertificate(alias);
+                return aliasCert.getNotAfter();
             } catch (KeyStoreException e) {
-                throw new AcmeTpmException("Error attempting to determine expiration date for " + domain + ": " + e.getMessage());
+                throw new AcmeTpmException("Error attempting to determine expiration date for " + alias + ": " + e.getMessage());
             }
         } else {
-            throw new AcmeTpmException(domain + " is not a managed domain.");
+            throw new AcmeTpmException(alias + " is not a valid alias.");
         }
     }
 
     /**
-     * Generates and stores a key pair for an alias. It will create the keypair if it doesn't exist.
+     * Generates and stores a key pair for an alias. If the keypair already exists, return silently.
      * 
      * @param alias the dns name for the host
      * @return The keypair for that alias if it exists in the keystore
      * @throws AcmeTpmException if the attempt to retrieve or create the keypair fails
      */
-    public void addKeyPair(String alias) throws AcmeTpmException {
+    public void addAlias(String alias) throws AcmeTpmException {
         logger.debug("Calling getaliasKeyPair for {}", alias);
         try {
             if (this.tpmKeyStore.containsAlias(alias)) {
-                logger.debug("Found keypair for {} in Keystore, fetching", alias);
-                logger.debug("Keypair successfully found, returning");
+                logger.debug("Keypair for {} already exists.", alias);
             } else { // If it doesn't exist, create and return it.
                 logger.debug("No keypair in keystore for {}, creating it.", alias);
                 KeyPair keyPair = newKeyPair();
@@ -216,13 +220,31 @@ public class TpmProvider {
     }
 
     /**
+     * Delete an alias and its associated keypair
+     * @param aliasName the name of the alias of the keypair to delete.
+     * @throws AcmeTpmException
+     */
+    public void deleteAlias(String aliasName) throws AcmeTpmException {
+        try {
+            if (this.tpmKeyStore.containsAlias(aliasName)) {
+                logger.debug("Alias " + aliasName + " exists. Deleting.");
+                this.tpmKeyStore.deleteEntry(aliasName);                
+            } else {
+                logger.debug("Alias does not exist.");
+            }
+        } catch (KeyStoreException e) {
+            throw new AcmeTpmException("Unable to delete keypair for " + aliasName + e.getMessage());
+        }
+    }
+
+    /**
      * Returns the pkcs11 paths for a private key and certificate pair stored in the TPM backed token
-     * @param The domain name corresponding the the keypair alias
+     * @param The alias name corresponding the the keypair alias
      * @return a Hashmap containing the private and public pkcs11 paths for the private and public keys.
      */
-    public HashMap<String, String> getPathsForTpmObjects(String domain) throws AcmeTpmException {
+    public HashMap<String, String> getPkcs11Paths(String alias) throws AcmeTpmException {
         // Initialize the PKCS11 utility
-        var pkcs11Util = new UtilPKCS11(domain);
+        var pkcs11Util = new UtilPKCS11(alias);
 
         // Get the pkcs11 paths
         return pkcs11Util.getPaths();
@@ -235,13 +257,13 @@ public class TpmProvider {
      * @throws AcmeTpmException if the SSL Context cannot be created
      */
     public SSLContext getSSLContext(Path trustStorePath) throws AcmeTpmException {
-        logger.info("Loading Client Keystore using PKCS11");
+        logger.debug("Loading Client Keystore using PKCS11");
         try {
             SSLContext sslContext = SSLContext.getInstance("TLSv1.3");
             KeyManagerFactory kmf = KeyManagerFactory.getInstance(KeyManagerFactory.getDefaultAlgorithm());
             kmf.init(this.tpmKeyStore, this.tokenPassword.getPassword());
             KeyManager[] keyManagers = kmf.getKeyManagers();
-            logger.info("Loaded {} key managers", keyManagers.length);
+            logger.debug("Loaded {} key managers", keyManagers.length);
 
             KeyStore trustStore = getTrustStore(trustStorePath);
 
@@ -264,7 +286,7 @@ public class TpmProvider {
      * @throws AcmeTpmException
      */
     public byte[] getCertRequestDER(String alias) throws AcmeTpmException {
-        logger.info("Generating CSR for alias " + alias);
+        logger.debug("Generating CSR for alias " + alias);
         try {
             PKCS10CertificationRequest request = createCertRequest(alias);
             return request.getEncoded();
@@ -280,7 +302,7 @@ public class TpmProvider {
      * @throws AcmeTpmException
      */
     public String getCertRequestPEM(String alias) throws AcmeTpmException {
-        logger.info("Generating CSR for alias " + alias);
+        logger.debug("Generating CSR for alias " + alias);
         try {
             PKCS10CertificationRequest request = createCertRequest(alias);
             StringWriter sw = new StringWriter();
@@ -336,7 +358,7 @@ public class TpmProvider {
 
     /**
      * Stores a keypair in the TPM backed token. Generates a self-signed certificate which shouldn't be used for real.
-     * @param alias the desired alias for the keypair this should be either the USER_ALIAS, or the domain name identifying the web server or certificates.
+     * @param alias the desired alias for the keypair this should be either the USER_ALIAS, or the alias name identifying the web server or certificates.
      * @param keyPair the keypair to store
      * @throws AcmeTpmException if the storage of the keypair fails.
      */
@@ -449,7 +471,7 @@ public class TpmProvider {
 
             final File keystoreFile = ejbcaTrustStore.toFile();
 
-            logger.info("Loading keystore from file {}", keystoreFile);
+            logger.debug("Loading keystore from file {}", keystoreFile);
             InputStream keystoreStream = new FileInputStream(keystoreFile);
 
             keystore.load(keystoreStream, trustStorePassword);
@@ -478,7 +500,7 @@ public class TpmProvider {
                 
                 return keyInfoHashMap;
             } else {
-                throw new AcmeTpmException(alias + "  is not a managed domain.");
+                throw new AcmeTpmException(alias + "  is not a valid alias.");
             }
         } catch (KeyStoreException | NoSuchAlgorithmException | UnrecoverableEntryException e) {
             throw new AcmeTpmException("Unable to access key for " + alias + ": " + e.getMessage());

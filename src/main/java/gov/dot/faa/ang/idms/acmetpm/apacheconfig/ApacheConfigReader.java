@@ -4,12 +4,18 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Set;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import net.augeas.Augeas;
 
 /** 
  * Class providing programatic access to the contents of an Apache Configuration 
 */
 public class ApacheConfigReader {
+    // Logger
+    private static final Logger logger = LoggerFactory.getLogger(ApacheConfigReader.class);
+
     // Constants for Xpath building
     private static final String DEFAULT_CONFIG_ROOT = "/etc/httpd"; // This should be a property.
     private static final String AUGEAS_ROOT = "/files" + DEFAULT_CONFIG_ROOT;
@@ -22,7 +28,7 @@ public class ApacheConfigReader {
     private static final String SSL_PRIVATE_KEY_PATH = AUGEAS_ROOT + 
         "//VirtualHost[arg = \"{{VHOST}}\"]/directive[\"SSLCertificateKeyFile\"]/arg";
     private static final String BASE_DOCUMENT_ROOT = AUGEAS_ROOT +
-        "//directive[\"DocumentRoot\"]";
+        "//directive[\"DocumentRoot\"]/arg";
     private static final String VHOST_DOCUMENT_ROOT = AUGEAS_ROOT + 
         "//VirtualHost[arg = \"{{VHOST}}\"]/directive[\"DocumentRoot\"]/arg";
 
@@ -44,22 +50,27 @@ public class ApacheConfigReader {
     /** Constructor */
     public ApacheConfigReader() {
         // create the instance
+        logger.debug("create the Augeas instance");
         this.augInstance = new Augeas();
 
         // check and see if SSL module is loaded, and if so get the list of Virtual Hosts (vHosts) using SSL
+        logger.debug("Getting a list of VirtualHost definitions with SSL Enabled");
         ArrayList<String> vHostList = new ArrayList<>();
         if (sslModuleLoaded()) {
             vHostList.addAll(getSSLVirtualHosts());
         }
 
-        // for each of the vHosts, get the key/certificate paths from the config
-        for (String host: vHostList) {
-            this.configs.put(host, getConfigForHost(host));
+        // Get the base DocumentRoot in case it is not defined in a vHost
+        logger.debug("Getting the default DocumentRoot");
+        if (augInstance.exists(BASE_DOCUMENT_ROOT)) {
+            logger.debug("Default documentroot found at " + augInstance.get(BASE_DOCUMENT_ROOT));
+            baseDocumentConfigRoot = cleanConfigValue(augInstance.get(BASE_DOCUMENT_ROOT));
         }
 
-        // Get the base DocumentRoot in case it is not defined in a vHost
-        if (augInstance.exists(BASE_DOCUMENT_ROOT)) {
-            baseDocumentConfigRoot = augInstance.get(BASE_DOCUMENT_ROOT);
+        // for each of the vHosts, get the key/certificate paths from the config
+        logger.debug("Getting the configuration details for all virtual hosts.");
+        for (String host: vHostList) {
+            this.configs.put(host, getConfigForHost(host));
         }
 
     }
@@ -105,7 +116,11 @@ public class ApacheConfigReader {
      * @return the location of the public key certificate from the configuration file
      */
     public final String getDocumentRootforVHost(String vHost) {
-        return this.configs.get(vHost).documentRoot;
+        // If the vHost doesn't define it's own documentRoot, return the default
+        if (this.configs.get(vHost).documentRoot == null) {
+            return baseDocumentConfigRoot;
+        }
+        return cleanConfigValue(this.configs.get(vHost).documentRoot);
     }
 
     /**
@@ -115,6 +130,7 @@ public class ApacheConfigReader {
      * @return true if mod_ssl is loaded, false if not
      */
     private boolean sslModuleLoaded() {
+        logger.debug("Checking to see if SSLModule is loaded.");
         return this.augInstance.exists(SSL_LOAD_MODULE_PATH);
     }
 
@@ -125,9 +141,21 @@ public class ApacheConfigReader {
      * @return an ArrayList of Strings containing the virtual host names (hostname:port)
      */
     private ArrayList<String> getSSLVirtualHosts() {
+        logger.debug("Creating list of virtual hosts with SSLEngine=on");
         ArrayList<String> hostIdList = new ArrayList<>();
         for (String path: this.augInstance.match(VIRT_HOST_LIST_PATH)){
-            hostIdList.add(this.augInstance.get(path));
+            String vHostId = this.augInstance.get(path);
+            logger.debug("Found vHost entry " + vHostId);
+            // vHosts can be defined as "host:port" - we're only intersed in the host part
+            if (vHostId.contains(":")) {
+                logger.debug("vHostId contains \":\" at " + vHostId.indexOf(":") + "... removing everything after.");
+                var vHostIdSubstring = vHostId.substring(0, vHostId.indexOf(":"));
+                logger.debug("Substring is " + vHostIdSubstring);
+                hostIdList.add(vHostIdSubstring);
+            } else {
+                hostIdList.add(vHostId);
+            }
+            
         }
         return hostIdList;
     }
@@ -158,8 +186,10 @@ public class ApacheConfigReader {
 
         String documentRootConfigPath = VHOST_DOCUMENT_ROOT.replace("{{VHOST}}", vHost);
         if (augInstance.exists(documentRootConfigPath)) {
+            logger.debug("vHost documentRoot found at " + augInstance.get(documentRootConfigPath));
             documentRoot = augInstance.get(documentRootConfigPath);
         } else {
+            logger.debug("No vHost Document root found. Using default of " + documentRootConfigPath);
             documentRoot = baseDocumentConfigRoot;
         }
 
@@ -172,5 +202,21 @@ public class ApacheConfigReader {
         augInstance.set(sslCertificateConfigPath, certPath);
         augInstance.set(sslPrivateKeyConfigPath, keyPath);
         augInstance.save();
+    }
+
+    private String cleanConfigValue(String rawString) {
+        String newValue = "";
+
+        // Create list of bad characters to strip
+        ArrayList<String> badCharacters = new ArrayList<>();
+        badCharacters.add("\"");
+        badCharacters.add("'");
+
+        newValue = rawString;
+
+        for(var badCharacter: badCharacters) {
+            newValue = newValue.replace(badCharacter, ""); // replace the bad character with nothing
+        }
+        return newValue;
     }
 }

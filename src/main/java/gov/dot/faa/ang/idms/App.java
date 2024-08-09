@@ -3,6 +3,9 @@ package gov.dot.faa.ang.idms;
 import gov.dot.faa.ang.idms.acmetpm.AcmeTpm;
 import gov.dot.faa.ang.idms.acmetpm.AcmeTpmException;
 
+import org.slf4j.LoggerFactory;
+import org.slf4j.Logger;
+
 import java.io.Console;
 import java.util.Scanner;
 
@@ -17,6 +20,8 @@ import picocli.CommandLine.Parameters;
 
 @Command(name = "acmetpm", mixinStandardHelpOptions = true, version = "acmetpm 0.1", description = "Enables management of TPM backed SSL Server keys with ACME")
 class App implements Callable<Integer> {
+    public static final Logger logger = LoggerFactory.getLogger(App.class);
+
     @Parameters(index = "0", paramLabel = "<command>", defaultValue = "help", description = "The subcommand to execute (type \"help\" for a list of commands)")
     String commandString = "help";
 
@@ -31,7 +36,11 @@ class App implements Callable<Integer> {
             "--expiration" }, paramLabel = "Expiration", description = "A cutoff date to compare to the expiration date in the certificates.")
     private Date expirationDate = null;
 
-    @Option(names = {"-i", "--input"}, paramLabel = "Input", description = "Input for an object that requires input.")
+    @Option(names = { "-i", "--input" }, paramLabel = "Input", description = "Input for an object that requires input.")
+    private String input = null;
+
+    @Option(names = { "--debug" }, paramLabel = "Debug", description = "Show debug logs.")
+    private boolean debug = false;
 
     static AcmeTpm acmeTpm;
 
@@ -51,6 +60,17 @@ class App implements Callable<Integer> {
         if (printHelp) {
             return printHelp();
         } else {
+            // Check for --debug flag
+            if (debug) {
+                System.out.println("got --debug");
+                System.err.println("I am printing to System.err");
+                System.setProperty("org.slf4j.simpleLogger.defaultLogLevel", "debug");
+                logger.debug("DEBUG logging enabled.");
+            } else {
+                logger.info("No --debug flag detected. Logging level set to INFO.");
+            }
+            // Cheating here since the debug flag isn't working?
+            System.out.println(System.getProperty("org.slf4j.simpleLogger.defaultLogLevel"));
             return processCommand();
         }
 
@@ -69,7 +89,7 @@ class App implements Callable<Integer> {
         }
 
         // Everything else requires a TPM
-        System.out.println("Initializing AcmeTPM class object.");
+        logger.debug("Initializing AcmeTPM class object.");
         try {
             acmeTpm = new AcmeTpm();
         } catch (AcmeTpmException e) {
@@ -79,7 +99,7 @@ class App implements Callable<Integer> {
 
         // Check for "requestusercert" first, in case the userkey doesn't exist
         if (commandString.equals("requestusercert")) {
-                return requestUserCert();
+            return requestUserCert();
         }
 
         // This command requires the userkey to be present
@@ -87,7 +107,8 @@ class App implements Callable<Integer> {
             if (acmeTpm.userKeyExists()) {
                 acmeTpm.initialize();
             } else {
-                System.err.println("The user key does not exist on the TPM. Please call 'requestusercert' before using any other commands.");
+                System.err.println(
+                        "The user key does not exist on the TPM. Please call 'requestusercert' before using any other commands.");
                 return FAIL;
             }
         } catch (AcmeTpmException e) {
@@ -126,7 +147,7 @@ class App implements Callable<Integer> {
                 return deleteDomain(domain);
 
             case "updatedomain":
-                //return r(domain);
+                // return r(domain);
 
             case "revokedomain":
                 return revokeCertificate(domain);
@@ -142,43 +163,42 @@ class App implements Callable<Integer> {
      * Functions implementing command options
      */
 
-
     /**
      * Prints diagnostic information about the TPM and keystore
+     * 
      * @return
      */
     private int Diagnostic() {
         try {
             // List user info
             System.out.println("User information:");
-            System.out.println("User keystore entry exists.");
             var keyInfo = acmeTpm.getUserKeyInfo();
             if (keyInfo.size() > 0) {
                 for (var key : keyInfo.keySet()) {
                     System.out.println(key + " : " + keyInfo.get(key));
                 }
-            } else { 
+            } else {
                 System.out.println("No attributes registered for keyStore entry");
             }
 
             // List domains
-            System.out.println("Managed Domain Information:");
+            System.out.println("\nManaged Domain Information:");
             listDomains();
-            
+
             // List ACME metadata
-            System.out.println("Fetching ACME server metadata to confirm connectivity.");
+            System.out.println("\nFetching ACME server metadata to confirm connectivity.");
             var metadataValues = acmeTpm.testAcmeConnection();
-            for (String key: metadataValues.keySet()) {
+            for (String key : metadataValues.keySet()) {
                 System.out.println("KEY: " + key + " / VALUE: " + metadataValues.get(key));
             }
 
             // Apache Virtual Hosts
-            System.out.println("Listing Apache Virtual Hosts configured.");
+            System.out.println("\nListing Apache Virtual Hosts configured.");
             var vhostConfigs = acmeTpm.listApacheVirtualHosts();
-    
-            for (String vhost: vhostConfigs.keySet()) {
+
+            for (String vhost : vhostConfigs.keySet()) {
                 System.out.println("Virtual Host: " + vhost);
-                for (var entry: vhostConfigs.get(vhost).entrySet()) {
+                for (var entry : vhostConfigs.get(vhost).entrySet()) {
                     System.out.println("\t" + entry.getKey() + ": " + entry.getValue());
                 }
             }
@@ -214,7 +234,8 @@ class App implements Callable<Integer> {
             System.out.println(csr);
             return SUCCESS;
         } catch (AcmeTpmException e) {
-            System.err.println("Unable to generate user private key and CSR: " + e.getMessage());;
+            System.err.println("Unable to generate user private key and CSR: " + e.getMessage());
+            ;
             return FAIL;
         }
     }
@@ -222,6 +243,7 @@ class App implements Callable<Integer> {
     /**
      * Prompts the user to paste a CERT in PEM format and updates the user
      * keystore with the new cert.
+     * 
      * @return SUCCESS(0) or FAIL(1)
      */
     private int installUserCert() {
@@ -238,7 +260,7 @@ class App implements Callable<Integer> {
             boolean recording = false;
 
             System.out.println("Paste the certificate in PEM format:");
-            
+
             while ((certScanner.hasNextLine())) {
                 input = certScanner.nextLine();
                 // Ignore everthing up until "BEGIN CERTIFICATE"
@@ -402,23 +424,25 @@ class App implements Callable<Integer> {
     }
 
     /**
-     * Login to check the status of orders and respond appropriately. A status is returned for each function.
+     * Login to check the status of orders and respond appropriately. A status is
+     * returned for each function.
+     * 
      * @return
      */
     private static int checkOrders() {
         try {
             System.out.println("Logging in and checking status of ACME Requests");
             var orderStatus = acmeTpm.checkOrders();
-            if  (orderStatus.keySet().size() < 1) {
+            if (orderStatus.keySet().size() < 1) {
                 System.out.println("There are no ACME Requests in progress.");
             }
-            for (var key: orderStatus.keySet()) {
+            for (var key : orderStatus.keySet()) {
                 System.out.println("ACME REQUEST: " + key);
-                for (var statusLine: orderStatus.get(key)) {
+                for (var statusLine : orderStatus.get(key)) {
                     System.out.println(statusLine);
                 }
             }
-            
+
         } catch (AcmeTpmException e) {
             System.err.println("Error checking orders: " + e.getMessage());
             return FAIL;
@@ -426,7 +450,6 @@ class App implements Callable<Integer> {
         return SUCCESS;
 
     }
-
 
     /**
      * Deletes a domain from the list of managed domains. This does not
@@ -436,8 +459,13 @@ class App implements Callable<Integer> {
      * @return
      */
     private int deleteDomain(String domain) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'deleteDomain'");
+        try {
+            acmeTpm.deleteDomain(domain);
+            return SUCCESS;
+        } catch (AcmeTpmException e) {
+            System.out.println("Unable to delete domain " + domain + ": " + e.getMessage());
+            return FAIL;
+        }
     }
 
     private int revokeCertificate(String domain) {
