@@ -122,7 +122,7 @@ class App implements Callable<Integer> {
                 return installUserCert();
 
             case "diagnostic":
-                return Diagnostic();
+                return diagnostic();
 
             case "listdomains":
                 return listDomains();
@@ -168,7 +168,7 @@ class App implements Callable<Integer> {
      * 
      * @return
      */
-    private int Diagnostic() {
+    private int diagnostic() {
         try {
             // List user info
             System.out.println("User information:");
@@ -201,6 +201,12 @@ class App implements Callable<Integer> {
                 for (var entry : vhostConfigs.get(vhost).entrySet()) {
                     System.out.println("\t" + entry.getKey() + ": " + entry.getValue());
                 }
+            }
+
+            // Pending orders
+            System.out.println("Listing orders associated with the account on the acme server.");
+            for (var orderStatusString: acmeTpm.getOrderInfo()) {
+                System.out.println(orderStatusString);
             }
 
             return SUCCESS;
