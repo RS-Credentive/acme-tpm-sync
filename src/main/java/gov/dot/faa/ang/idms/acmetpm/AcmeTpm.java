@@ -73,6 +73,10 @@ public class AcmeTpm {
             throw new AcmeTpmException("Unable to load default properties from resource");
         }
 
+        System.out.println("AcmeTPMLogger");
+        System.out.println(System.getProperty("org.slf4j.simpleLogger.defaultLogLevel"));
+        System.out.println(logger.getClass().getName());
+
         logger.debug("Loading Properties");
         // Verify the properties file
         props = new PropLoader();
@@ -143,21 +147,23 @@ public class AcmeTpm {
     }
 
     /**
-     * Get information about outstanding orders, and return the information as strings for processing by the CLI.
+     * Get information about outstanding orders, and return the information as
+     * strings for processing by the CLI.
+     * 
      * @return ArrayList<String> with status information
      * @throws AcmeTpmException
      */
     public ArrayList<String> getOrderInfo() throws AcmeTpmException {
         var infoStrings = new ArrayList<String>();
         var orders = acmeUserAccount.getOrders();
-        while (orders.hasNext())   {
+        while (orders.hasNext()) {
             var order = orders.next();
             infoStrings.add("\nOrder hashcode: " + order.hashCode());
             infoStrings.add("Status: " + order.getStatus());
-            for (var id: order.getIdentifiers()) {
+            for (var id : order.getIdentifiers()) {
                 infoStrings.add("Order ID: " + id.getValue());
             }
-            for (var authorization: order.getAuthorizations()) {
+            for (var authorization : order.getAuthorizations()) {
                 infoStrings.addAll(getAuthorationInfo(authorization));
             }
         }
@@ -165,11 +171,11 @@ public class AcmeTpm {
     }
 
     private ArrayList<String> getAuthorationInfo(Authorization authorization) {
-        var authorizationInfoStrings =  new ArrayList<String>();
+        var authorizationInfoStrings = new ArrayList<String>();
         authorizationInfoStrings.add("AUTHORIZATION");
         authorizationInfoStrings.add("Status: " + authorization.getStatus());
         var expiration = authorization.getExpires();
-        if (expiration.isPresent()){
+        if (expiration.isPresent()) {
             authorizationInfoStrings.add("Authorization expiration: " + expiration.get());
         }
         authorizationInfoStrings.add("Authorization Identifier: " + authorization.getIdentifier().getValue());
@@ -179,7 +185,7 @@ public class AcmeTpm {
             var error = challenge.getError();
             if (error.isPresent()) {
                 authorizationInfoStrings.add("Errors: " + error.get());
-            }            
+            }
         }
         return authorizationInfoStrings;
     }
@@ -501,11 +507,38 @@ public class AcmeTpm {
         try {
             authorization.deactivate();
             cancelAuthorizationResults.add("Successfully cancelled authorization.");
+            var cleanupChallengesResults = cleanupChallenges(authorization.getIdentifier().getValue(), authorization.getChallenges());
+            cancelAuthorizationResults.addAll(cleanupChallengesResults);
         } catch (AcmeException e) {
             throw new AcmeTpmException("Unable to cancel authorization for order.");
         }
         return cancelAuthorizationResults;
     }
+
+    private ArrayList<String> cleanupChallenges(String domain, List<Challenge> challenges) throws AcmeTpmException {
+        var cleanupChallengesResults = new ArrayList<String>();
+        for (var challenge : challenges) {
+            switch (challenge.getType()) {
+                case "http-01":
+                    cleanupChallengesResults.add("Deleting challenge file for domain " + domain);
+                    var challengeToken = ((Http01Challenge) challenge).getToken();
+                    ApacheHTTPAuthz.deleteAuthzFile(Path.of(apacheConfig.getDocumentRootforVHost(domain)),
+                            challengeToken);
+                    break;
+                // Can't process DNS challenges until proxy is completed.
+                case "dns-01":
+                    // challengeResponses.add(processDnsChallenge(domain, (Dns01Challenge)
+                    // challenge));
+                    cleanupChallengesResults.add("     J/K we don't do that yet");
+                    break;
+                default:
+                    cleanupChallengesResults
+                            .add("     Challenge type " + challenge.getType() + " unrecognized or unimplemented.");
+            }
+        }
+        return cleanupChallengesResults;
+    }
+
     /**
      * Process challenges associated with an authorization in the PENDING state.
      * 
@@ -580,9 +613,9 @@ public class AcmeTpm {
         // If we got here, the status is pending and the type is HTTP, so we just need
         // to create the expected file.
         String token = challenge.getToken();
-        
+
         Path authorizationResourcePath = Path.of(apacheConfig.getDocumentRootforVHost(domain));
-        ApacheHTTPAuthz.writeAuthzFile(authorizationResourcePath, token);
+        ApacheHTTPAuthz.createAuthzFile(authorizationResourcePath, token);
         responseStrings.add("     Wrote token file to " + authorizationResourcePath.toString());
 
         try {

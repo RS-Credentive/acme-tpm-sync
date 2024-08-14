@@ -1,14 +1,17 @@
 package gov.dot.faa.ang.idms.acmetpm.apacheconfig;
 
 import java.io.IOException;
-import java.nio.file.Path;
 import java.nio.file.Files;
-
-import gov.dot.faa.ang.idms.acmetpm.AcmeTpmException;
-
-import org.slf4j.LoggerFactory;
+import java.nio.file.NoSuchFileException;
+import java.nio.file.Path;
+import java.nio.file.attribute.PosixFilePermission;
+import java.nio.file.attribute.PosixFilePermissions;
+import java.util.Set;
 
 import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import gov.dot.faa.ang.idms.acmetpm.AcmeTpmException;
 
 /**
  * ApacheHTTPAuthz is responsible for creating a file to support HTTP Authorization for an ACME Challenge
@@ -18,13 +21,15 @@ public final class ApacheHTTPAuthz {
 
     private static final Path challengePath = Path.of(".well-known", "acme-challenge");
 
+    static final Set<PosixFilePermission> RW_R_R_PERMISSION = PosixFilePermissions.fromString("rw-r--r--");
+
     /**
      * Write a token file to the appropriate subdirectory with the expected name and contents.
      * @param docRoot - the Apache docroot to write to
      * @param token - the token value provided by the ACME server
      * @throws AcmeTpmException
      */
-    public static void writeAuthzFile(Path docRoot, String token) throws AcmeTpmException {
+    public static void createAuthzFile(Path docRoot, String token) throws AcmeTpmException {
         // TODO: We need to clean up these files after the certificate is downloaded
         Path authorizationResourceDirectory = docRoot.resolve(challengePath);
         Path authorizationResourceFile = authorizationResourceDirectory.resolve(token);
@@ -43,6 +48,7 @@ public final class ApacheHTTPAuthz {
         if (! authorizationResourceFile.toFile().exists()) {
             try {
                 authorizationResourceFile.toFile().createNewFile();
+                Files.setPosixFilePermissions(authorizationResourceFile, RW_R_R_PERMISSION);
             } catch (IOException e) {
                 throw new AcmeTpmException("Unable to create new file " + authorizationResourceFile.toString());
             }
@@ -54,5 +60,16 @@ public final class ApacheHTTPAuthz {
             throw new AcmeTpmException("Unable to write token data to  " + authorizationResourceFile.toString());
         }
 
+    }
+
+    public static void deleteAuthzFile(Path docRoot, String token) throws AcmeTpmException {
+        Path authorizationResourceDirectory = docRoot.resolve(challengePath);
+        Path authorizationResourceFile = authorizationResourceDirectory.resolve(token);
+
+        try {
+            Files.delete(authorizationResourceFile);
+        } catch (IOException e) {
+            logger.info("Error when attempting to delete authorization resource file, {}. Ignoring.", authorizationResourceFile.toString());
+        }
     }
 }
