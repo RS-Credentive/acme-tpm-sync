@@ -5,8 +5,10 @@ import gov.dot.faa.ang.idms.acmetpm.AcmeTpmException;
 
 import org.slf4j.LoggerFactory;
 import org.slf4j.Logger;
+import org.slf4j.simple.*;
 
 import java.io.Console;
+import java.lang.invoke.MethodHandles;
 import java.util.Scanner;
 
 import java.util.Date;
@@ -20,8 +22,6 @@ import picocli.CommandLine.Parameters;
 
 @Command(name = "acmetpm", mixinStandardHelpOptions = true, version = "acmetpm 0.1", description = "Enables management of TPM backed SSL Server keys with ACME")
 class App implements Callable<Integer> {
-    public static final Logger logger = LoggerFactory.getLogger(App.class);
-
     @Parameters(index = "0", paramLabel = "<command>", defaultValue = "help", description = "The subcommand to execute (type \"help\" for a list of commands)")
     String commandString = "help";
 
@@ -44,6 +44,8 @@ class App implements Callable<Integer> {
 
     static AcmeTpm acmeTpm;
 
+    private static Logger logger;    
+
     // Error codes for return functions.
     static final int FAIL = 1;
     static final int SUCCESS = 0;
@@ -62,15 +64,16 @@ class App implements Callable<Integer> {
         } else {
             // Check for --debug flag
             if (debug) {
-                System.out.println("got --debug");
-                System.err.println("I am printing to System.err");
                 System.setProperty("org.slf4j.simpleLogger.defaultLogLevel", "debug");
+                logger = LoggerFactory.getLogger(App.class);
+                if (logger.isDebugEnabled()) { System.out.println("Debug logging enabled");}
                 logger.debug("DEBUG logging enabled.");
             } else {
+                logger = LoggerFactory.getLogger(App.class);
                 logger.info("No --debug flag detected. Logging level set to INFO.");
             }
-            // Cheating here since the debug flag isn't working?
-            System.out.println(System.getProperty("org.slf4j.simpleLogger.defaultLogLevel"));
+            // Log now since we just set the debug level.
+            
             return processCommand();
         }
 
@@ -89,6 +92,7 @@ class App implements Callable<Integer> {
         }
 
         // Everything else requires a TPM
+        System.out.println(System.getProperty("org.slf4j.simpleLogger.defaultLogLevel"));
         logger.debug("Initializing AcmeTPM class object.");
         try {
             acmeTpm = new AcmeTpm();
