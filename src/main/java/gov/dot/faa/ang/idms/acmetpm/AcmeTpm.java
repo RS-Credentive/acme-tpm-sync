@@ -73,10 +73,6 @@ public class AcmeTpm {
             throw new AcmeTpmException("Unable to load default properties from resource");
         }
 
-        System.out.println("AcmeTPMLogger");
-        System.out.println(System.getProperty("org.slf4j.simpleLogger.defaultLogLevel"));
-        System.out.println(logger.getClass().getName());
-
         logger.debug("Loading Properties");
         // Verify the properties file
         props = new PropLoader();
@@ -136,11 +132,11 @@ public class AcmeTpm {
      */
     public HashMap<String, HashMap<String, String>> listApacheVirtualHosts() throws AcmeTpmException {
         HashMap<String, HashMap<String, String>> apacheVhosts = new HashMap<>();
-        for (String vhost : apacheConfig.getVHosts()) {
+        for (String vhost : apacheConfig.getHostnames()) {
             HashMap<String, String> vhostConfig = new HashMap<>();
-            vhostConfig.put("Document Root", apacheConfig.getDocumentRootforVHost(vhost));
-            vhostConfig.put("Private Key Location", apacheConfig.getKeyLocationForVHost(vhost));
-            vhostConfig.put("Certificate Location", apacheConfig.getCertLocationforVHost(vhost));
+            vhostConfig.put("Document Root", apacheConfig.getDocumentRootforHostname(vhost));
+            vhostConfig.put("Private Key Location", apacheConfig.getKeyLocationForHostname(vhost));
+            vhostConfig.put("Certificate Location", apacheConfig.getCertLocationForHostname(vhost));
             apacheVhosts.put(vhost, vhostConfig);
         }
         return apacheVhosts;
@@ -335,7 +331,8 @@ public class AcmeTpm {
      * @throws AcmeTpmException
      */
     private ArrayList<String> processOrder(Order order) throws AcmeTpmException {
-        logger.debug("Entering processOrder for order" + order.hashCode());
+        logger.debug("Entering processOrder for order {}", order.hashCode());
+        logger.debug("Order status: {}", order.getStatus() );
         var statusResults = new ArrayList<String>();
         switch (order.getStatus()) {
             case PENDING:
@@ -344,8 +341,8 @@ public class AcmeTpm {
                 statusResults.addAll(processAuthorizations(order.getAuthorizations()));
                 break;
             case READY:
+                statusResults.add(" ORDER Ready - finalizing.");
                 var orderStatus = finalizeOrder(order);
-                statusResults.add(" ORDER ready - finalized.");
                 statusResults.add(orderStatus);
                 break;
             case PROCESSING:
@@ -354,8 +351,8 @@ public class AcmeTpm {
                 break;
             case VALID:
                 // fetch certificate
-                getAndInstallCertificate(order);
                 statusResults.add(" ORDER Valid - installing certificate");
+                getAndInstallCertificate(order);
                 break;
             case INVALID:
                 // order failed - cancel
@@ -409,6 +406,8 @@ public class AcmeTpm {
      * @throws AcmeTpmException
      */
     private ArrayList<String> getAndInstallCertificate(Order order) throws AcmeTpmException {
+        logger.debug("Entering getAndInstallCertificate for order {}", order.hashCode());
+        
         var statusStrings = new ArrayList<String>();
 
         // get the domain for the certificate
@@ -429,14 +428,14 @@ public class AcmeTpm {
             var keyPathMap = tpmProvider.getPkcs11Paths(domain);
 
             // update the config for vHost
-            if (apacheConfig.vHostExists(domain)) {
-                apacheConfig.updateConfigForHost(domain,
+            if (apacheConfig.hostnameExists(domain)) {
+                apacheConfig.updateConfigForHostname(domain,
                         keyPathMap.get("SSLCertificateFile"),
                         keyPathMap.get("SSLCertificateKeyFile"));
             }
 
         } catch (IllegalStateException | AcmeTpmException e) {
-            throw new AcmeTpmException("Unable to retrieve and install certificate for " + order.toString());
+            throw new AcmeTpmException("Unable to retrieve and install certificate for " + order.toString() + ":" + e.getMessage());
         }
 
         return statusStrings;
@@ -470,8 +469,7 @@ public class AcmeTpm {
                 case PENDING:
                     String domain = authorization.getIdentifier().getValue();
                     authorizationProcessingResults.add("  AUTHORIZATION for " + domain);
-                    if (apacheConfig.vHostExists(domain)) {
-
+                    if (apacheConfig.hostnameExists(domain)) {
                         authorizationProcessingResults.addAll(processChallenges(domain, authorization.getChallenges()));
                     } else {
                         authorizationProcessingResults
@@ -522,7 +520,7 @@ public class AcmeTpm {
                 case "http-01":
                     cleanupChallengesResults.add("Deleting challenge file for domain " + domain);
                     var challengeToken = ((Http01Challenge) challenge).getToken();
-                    ApacheHTTPAuthz.deleteAuthzFile(Path.of(apacheConfig.getDocumentRootforVHost(domain)),
+                    ApacheHTTPAuthz.deleteAuthzFile(Path.of(apacheConfig.getDocumentRootforHostname(domain)),
                             challengeToken);
                     break;
                 // Can't process DNS challenges until proxy is completed.
@@ -561,7 +559,7 @@ public class AcmeTpm {
                 case VALID:
                     // return to caller, so that the caller can fetch the certificate
                     challengeProcessingResults
-                            .add("   CHALLENGE: Status VALID. Certificate will be fetched on next run.");
+                            .add("   CHALLENGE: Status VALID. Certificate will be fetched.");
                     break;
                 case PENDING:
                     challengeProcessingResults.add("   CHALLENGE: Status PENDING.");
@@ -613,9 +611,10 @@ public class AcmeTpm {
         // If we got here, the status is pending and the type is HTTP, so we just need
         // to create the expected file.
         String token = challenge.getToken();
+        String authorization = challenge.getAuthorization();
 
-        Path authorizationResourcePath = Path.of(apacheConfig.getDocumentRootforVHost(domain));
-        ApacheHTTPAuthz.createAuthzFile(authorizationResourcePath, token);
+        Path authorizationResourcePath = Path.of(apacheConfig.getDocumentRootforHostname(domain));
+        ApacheHTTPAuthz.createAuthzFile(authorizationResourcePath, token, authorization);
         responseStrings.add("     Wrote token file to " + authorizationResourcePath.toString());
 
         try {
