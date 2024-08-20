@@ -8,6 +8,8 @@ import java.util.HexFormat;
 
 import org.pkcs11.jacknji11.*;
 import org.pkcs11.jacknji11.jna.*;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Utility class providing access to the PKCS11 primitives. Needed only for pkcs11 path
@@ -17,6 +19,9 @@ import org.pkcs11.jacknji11.jna.*;
  * public key: "pkcs11:model=NitroTPM;manufacturer=AMZN;serial=0000000000000000;token=label;id=%75%73%65%72%4B%65%79%50%61%69%72;object=userKeyPair;type=cer"
  */
 public class UtilPKCS11 {
+
+    private static final Logger logger = LoggerFactory.getLogger(UtilPKCS11.class);
+
     PropLoader props = new PropLoader();
     private final String label = props.getProp("token.label");
     private final String p11LibraryPath = props.getProp("token.libraryPath");
@@ -115,8 +120,12 @@ public class UtilPKCS11 {
     }
 
     private void initializeLibrary() {
-        C.NATIVE = new JNA(p11LibraryPath);
-        CE.Initialize();
+        try {
+            C.NATIVE = new JNA(p11LibraryPath);
+            CE.Initialize();
+        } catch (CKRException e) {
+            logger.debug("Ignoring non-fatal error CRYPTOKI_ALREADY_INITIALIZED");
+        }
     }
 
     private long acmeSlot() {
