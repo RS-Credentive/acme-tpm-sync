@@ -5,14 +5,12 @@ import gov.dot.faa.ang.idms.acmetpm.AcmeTpmException;
 
 import org.slf4j.LoggerFactory;
 import org.slf4j.Logger;
-import org.slf4j.simple.*;
-
 import java.io.Console;
-import java.lang.invoke.MethodHandles;
 import java.util.Scanner;
 
 import java.util.Date;
 import java.util.HashMap;
+import java.util.Properties;
 import java.util.concurrent.Callable;
 
 import picocli.CommandLine;
@@ -62,11 +60,16 @@ class App implements Callable<Integer> {
         if (printHelp) {
             return printHelp();
         } else {
+            // Log the time 
+            Properties loggingProperties = System.getProperties();
+            loggingProperties.put("org.slf4j.simpleLogger.showDateTime", true);
+            loggingProperties.put("org.slf4j.simpleLogger.dateTimeFormat", "yyyy-MM-dd'T'HH:mm:ss.SSS");
+            System.setProperties(loggingProperties);
+
             // Check for --debug flag
             if (debug) {
                 System.setProperty("org.slf4j.simpleLogger.defaultLogLevel", "debug");
                 logger = LoggerFactory.getLogger(App.class);
-                if (logger.isDebugEnabled()) { System.out.println("Debug logging enabled");}
                 logger.debug("DEBUG logging enabled.");
             } else {
                 logger = LoggerFactory.getLogger(App.class);
@@ -92,7 +95,6 @@ class App implements Callable<Integer> {
         }
 
         // Everything else requires a TPM
-        System.out.println(System.getProperty("org.slf4j.simpleLogger.defaultLogLevel"));
         logger.debug("Initializing AcmeTPM class object.");
         try {
             acmeTpm = new AcmeTpm();
