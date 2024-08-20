@@ -2,7 +2,6 @@ package gov.dot.faa.ang.idms.acmetpm.apacheconfig;
 
 import java.io.IOException;
 import java.nio.file.Files;
-import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.nio.file.attribute.PosixFilePermission;
 import java.nio.file.attribute.PosixFilePermissions;
@@ -29,7 +28,7 @@ public final class ApacheHTTPAuthz {
      * @param token - the token value provided by the ACME server
      * @throws AcmeTpmException
      */
-    public static void createAuthzFile(Path docRoot, String token) throws AcmeTpmException {
+    public static void createAuthzFile(Path docRoot, String token, String authorization) throws AcmeTpmException {
         // TODO: We need to clean up these files after the certificate is downloaded
         Path authorizationResourceDirectory = docRoot.resolve(challengePath);
         Path authorizationResourceFile = authorizationResourceDirectory.resolve(token);
@@ -55,7 +54,7 @@ public final class ApacheHTTPAuthz {
         }
 
         try {
-            Files.write(authorizationResourceFile, token.getBytes());
+            Files.write(authorizationResourceFile, authorization.getBytes());
         } catch (IOException e) {
             throw new AcmeTpmException("Unable to write token data to  " + authorizationResourceFile.toString());
         }
