@@ -33,6 +33,7 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.HashMap;
+import java.util.Map;
 
 import javax.net.ssl.KeyManager;
 import javax.net.ssl.KeyManagerFactory;
@@ -40,9 +41,13 @@ import javax.net.ssl.SSLContext;
 import javax.net.ssl.TrustManager;
 import javax.net.ssl.TrustManagerFactory;
 
+import org.bouncycastle.asn1.ASN1ObjectIdentifier;
 import org.bouncycastle.asn1.x500.X500Name;
 import org.bouncycastle.asn1.x500.X500NameBuilder;
 import org.bouncycastle.asn1.x500.style.BCStyle;
+import org.bouncycastle.asn1.x509.Extension;
+import org.bouncycastle.asn1.x509.GeneralName;
+import org.bouncycastle.asn1.x509.GeneralNamesBuilder;
 import org.bouncycastle.asn1.x509.SubjectPublicKeyInfo;
 import org.bouncycastle.cert.X509CertificateHolder;
 import org.bouncycastle.cert.X509v3CertificateBuilder;
@@ -73,6 +78,13 @@ public class TpmProvider {
     private static final String CERT_SIG_ALG = "SHA256withECDSA";
     private static final String EC_PARAM_SPEC = "secp256r1";
     private static final String USER_ALIAS = "userKeyPair";
+
+    private static Map<ASN1ObjectIdentifier, String> BASE_DN = Map.of(
+        BCStyle.C, "US",
+        BCStyle.ST, "District of Columbia ",
+        BCStyle.L, "Washington",
+        BCStyle.O, "Federal Aviation Adminsitration"
+    );
 
     private static Provider tpmProvider; // Used for key generation, storage and private key operations
     private static Provider bcProvider; // Used for certificate generation and X.509 stuff
@@ -323,14 +335,30 @@ public class TpmProvider {
      */
     // TODO: Update so that the profile is correct unless EJBCA will do that for us
     private PKCS10CertificationRequest createCertRequest(String alias) throws AcmeTpmException {
-        KeyPair keyPair;
-        X500Name distinguishedName = new X500NameBuilder(BCStyle.INSTANCE).addRDN(BCStyle.CN, "Self").build();
+        logger.debug("Attempting to build CSR for {}", alias);
+
+        // Get the keys
+        logger.debug("Getting the keys");
+        KeyPair keyPair = getKeyPair(alias);
+        
+        // Build the distinguished name 
+        var distinguishedNameBuilder = new X500NameBuilder(BCStyle.INSTANCE);
+        for (var dnEntry: BASE_DN.keySet()) {
+            distinguishedNameBuilder.addRDN(dnEntry, BASE_DN.get(dnEntry));
+        }
+        distinguishedNameBuilder.addRDN(BCStyle.CN, alias);
+        logger.debug("Built SubjectDN of {}", distinguishedNameBuilder.build().toString());
+
+        // Build subjectAltName
+        var subjectAlternativeName = new GeneralNamesBuilder().addName(new GeneralName(GeneralName.rfc822Name, alias)).build();
+        logger.debug("Built SAN of {}", subjectAlternativeName.toString());
+
         try {
-            keyPair = getKeyPair(alias);
             PKCS10CertificationRequest request = new JcaPKCS10CertificationRequestBuilder(
-                distinguishedName,
+                distinguishedNameBuilder.build(),
                 keyPair.getPublic()
-                ).build(new JcaContentSignerBuilder(CERT_SIG_ALG).build(keyPair.getPrivate()));
+                ).addAttribute(Extension.subjectAlternativeName, subjectAlternativeName)
+                .build(new JcaContentSignerBuilder(CERT_SIG_ALG).build(keyPair.getPrivate()));
             return request;
         } catch (OperatorCreationException e) {
             throw new AcmeTpmException("Unable to create certificate request for " + alias + ": " + e.getMessage());
