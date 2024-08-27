@@ -652,6 +652,11 @@ public class AcmeTpm {
     // }
     // }
 
+    /**
+     * Return true if the key exists, false otherwise
+     * @return boolean 
+     * @throws AcmeTpmException
+     */
     public boolean userKeyExists() throws AcmeTpmException {
         return tpmProvider.hasAlias(props.getProp("token.userAlias"));
     }
