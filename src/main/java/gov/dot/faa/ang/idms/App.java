@@ -37,6 +37,9 @@ class App implements Callable<Integer> {
     @Option(names = { "-i", "--input" }, paramLabel = "Input", description = "Input for an object that requires input.")
     private String input = null;
 
+    @Option(names = {"-o", "--order"}, paramLabel = "OrderID", description = "Order Identifier")
+    private String orderID = null;
+
     @Option(names = { "--debug" }, paramLabel = "Debug", description = "Show debug logs.")
     private boolean debug = false;
 
@@ -155,8 +158,13 @@ class App implements Callable<Integer> {
             case "updatedomain":
                 // return r(domain);
 
-            case "revokedomain":
-                return revokeCertificate(domain);
+            case "revokecertificate":
+                if (domain != null) {
+                    return revokeCertificate(domain);
+                } else if (orderID != null) {
+                    return revokeCertificate(orderID);
+                }
+                
 
             default:
                 System.out.println("The command " + commandString
@@ -480,7 +488,13 @@ class App implements Callable<Integer> {
         }
     }
 
-    private int revokeCertificate(String domain) {
+    /**
+     * 
+     * @param domainOrOrder an identifier for a certificate that is either a domain, or an order ID for a valid order 
+     * (if the certificate is no longer available)
+     * @return
+     */
+    private int revokeCertificate(String domainOrOrder) {
         // TODO: fix this
         return SUCCESS;
     }
