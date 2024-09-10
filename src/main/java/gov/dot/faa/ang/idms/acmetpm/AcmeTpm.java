@@ -56,6 +56,7 @@ public class AcmeTpm {
     private Account acmeUserAccount;
     private ApacheConfigReader apacheConfig;
     private ArrayList<DomainTracker> domainTrackers;
+    private static String userIdentifier;
 
     private static final Logger logger = LoggerFactory.getLogger(AcmeTpm.class);
 
@@ -66,12 +67,12 @@ public class AcmeTpm {
      */
     public AcmeTpm() throws AcmeTpmException {
         // Set system properties
-        try {
-            var systemPropStream = AcmeTpm.class.getResourceAsStream("/application.properties");
-            System.getProperties().load(systemPropStream);
-        } catch (IOException e) {
-            throw new AcmeTpmException("Unable to load default properties from resource");
-        }
+        // try {
+        //     var systemPropStream = AcmeTpm.class.getResourceAsStream("/application.properties");
+        //     System.getProperties().load(systemPropStream);
+        // } catch (IOException e) {
+        //     throw new AcmeTpmException("Unable to load default properties from resource");
+        // }
 
         logger.debug("Loading Properties");
         // Verify the properties file
@@ -79,6 +80,9 @@ public class AcmeTpm {
 
         logger.debug("Loading Token Password");
         tokenPassword = props.getTokenPassword();
+
+        // Set username
+        userIdentifier = setUserIdentifier();
 
         logger.debug("loading Keystore");
         // Load the TPM Keystore
@@ -380,7 +384,7 @@ public class AcmeTpm {
         for (var identifier : orderIdentifiers) {
             if (tpmProvider.hasAlias(identifier.getValue())) {
                 domain = identifier.getValue();
-                domainCSR = tpmProvider.getCertRequestDER(domain);
+                domainCSR = tpmProvider.getCertRequestDER(domain, null, false);
             }
         }
 
@@ -392,7 +396,7 @@ public class AcmeTpm {
         // Otherwise, attempt to finalize the order.
         try {
             order.execute(domainCSR);
-            return ("Finalized order for domain" + domain);
+            return ("Finalized order for domain " + domain);
         } catch (AcmeException e) {
             throw new AcmeTpmException("Unable to place order for " + order.toString());
         }
@@ -413,8 +417,10 @@ public class AcmeTpm {
         // get the domain for the certificate
         try {
             // Find the domain associated with the order
+            
             String domain = findDomainForOrder(order);
             statusStrings.add("Fulfilling order for " + domain);
+            logger.debug("Fulfilling order for {}", domain);
 
             // get the certificate from the order
             X509Certificate certificate = order.getCertificate().getCertificate();
@@ -684,6 +690,30 @@ public class AcmeTpm {
     }
 
     /**
+     * Generate a username for requests from this host - admin email + hostname
+     * @return Calculated username
+     * @throws AcmeTpmException
+     */
+    private String setUserIdentifier() throws AcmeTpmException {
+        // get email or throw an exception
+        var userEmail = props.getProp("acme.userEmail");
+        if (userEmail == null) {
+            throw new AcmeTpmException("User Email not set");
+        }
+
+        // hostname
+        String hostname;
+        try {
+            hostname = InetAddress.getLocalHost().getCanonicalHostName();
+        } catch (UnknownHostException e) {
+            throw new AcmeTpmException("Unable to determine server hostname");
+        }
+
+        // TODO: Check for existing cert with this name...
+        return userEmail + "-" + hostname;
+    }
+
+    /**
      * Generates a CSR for the userKeyPair and returns it as a PEM encoded string.
      * 
      * @param keyPairAlias - the alias of the keypair for which to generate the CSR
@@ -694,7 +724,9 @@ public class AcmeTpm {
         if (!hasKeyPair(props.getProp("token.userAlias"))) {
             tpmProvider.addAlias(props.getProp("token.userAlias"));
         }
-        return tpmProvider.getCertRequestPEM(props.getProp("token.userAlias"));
+
+
+        return tpmProvider.getCertRequestPEM(props.getProp("token.userAlias"), userIdentifier, true);
     }
 
     /**

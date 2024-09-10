@@ -12,10 +12,16 @@ public class PropLoader {
     public static Properties props;
     private static Path propFileLocation = Path.of("etc", "acmetpm", "acmetpm.properties");
 
-    public PropLoader() throws AcmeTpmException {
+    public PropLoader() {
         props = new Properties();
-        setDefaultProperties();
-        initialize(propFileLocation);
+
+        try {
+            setDefaultProperties();
+            initialize(propFileLocation);
+        } catch (AcmeTpmException e) {
+            System.err.println("Unable to initialize Properties. Halting.");
+            System.exit(1);
+        }
     }
 
     private static final void setDefaultProperties() throws AcmeTpmException {
@@ -57,7 +63,7 @@ public class PropLoader {
     }
 
     public String getProp(String propName) throws AcmeTpmException {
-        // TODO: This should be an optional
+        // TODO: This should return an optional
         if (props.containsKey(propName)) {
             return props.getProperty(propName);
         } else {

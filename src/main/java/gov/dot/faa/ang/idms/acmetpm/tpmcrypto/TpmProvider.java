@@ -33,7 +33,6 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.HashMap;
-import java.util.Map;
 
 import javax.net.ssl.KeyManager;
 import javax.net.ssl.KeyManagerFactory;
@@ -45,21 +44,22 @@ import org.bouncycastle.asn1.ASN1ObjectIdentifier;
 import org.bouncycastle.asn1.x500.X500Name;
 import org.bouncycastle.asn1.x500.X500NameBuilder;
 import org.bouncycastle.asn1.x500.style.BCStyle;
+import org.bouncycastle.asn1.x509.CertificatePolicies;
 import org.bouncycastle.asn1.x509.Extension;
 import org.bouncycastle.asn1.x509.GeneralName;
 import org.bouncycastle.asn1.x509.GeneralNamesBuilder;
+import org.bouncycastle.asn1.x509.PolicyInformation;
 import org.bouncycastle.asn1.x509.SubjectPublicKeyInfo;
 import org.bouncycastle.cert.X509CertificateHolder;
 import org.bouncycastle.cert.X509v3CertificateBuilder;
 import org.bouncycastle.cert.jcajce.JcaX509CertificateConverter;
 import org.bouncycastle.jce.provider.BouncyCastleProvider;
-import org.bouncycastle.openssl.jcajce.JcaPEMWriter;
 import org.bouncycastle.openssl.PEMParser;
+import org.bouncycastle.openssl.jcajce.JcaPEMWriter;
 import org.bouncycastle.operator.OperatorCreationException;
 import org.bouncycastle.operator.jcajce.JcaContentSignerBuilder;
 import org.bouncycastle.pkcs.PKCS10CertificationRequest;
 import org.bouncycastle.pkcs.jcajce.JcaPKCS10CertificationRequestBuilder;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -77,14 +77,7 @@ public class TpmProvider {
     private static final String KEYPAIR_ALGORITHM = "EC";
     private static final String CERT_SIG_ALG = "SHA256withECDSA";
     private static final String EC_PARAM_SPEC = "secp256r1";
-    private static final String USER_ALIAS = "userKeyPair";
-
-    private static Map<ASN1ObjectIdentifier, String> BASE_DN = Map.of(
-        BCStyle.C, "US",
-        BCStyle.ST, "District of Columbia ",
-        BCStyle.L, "Washington",
-        BCStyle.O, "Federal Aviation Adminsitration"
-    );
+    
 
     private static Provider tpmProvider; // Used for key generation, storage and private key operations
     private static Provider bcProvider; // Used for certificate generation and X.509 stuff
@@ -297,10 +290,11 @@ public class TpmProvider {
      * @return a CSR in DER format
      * @throws AcmeTpmException
      */
-    public byte[] getCertRequestDER(String alias) throws AcmeTpmException {
+    public byte[] getCertRequestDER(String alias, String commonName, boolean includeBaseDN) throws AcmeTpmException {
         logger.debug("Generating CSR for alias " + alias);
+
         try {
-            PKCS10CertificationRequest request = createCertRequest(alias);
+            PKCS10CertificationRequest request = createCertRequest(alias, commonName, includeBaseDN);
             return request.getEncoded();
         } catch (AcmeTpmException | IOException e) {
             throw new AcmeTpmException("Error creating signing request for alias " + alias + ": " + e.getMessage());
@@ -313,10 +307,10 @@ public class TpmProvider {
      * @return a CSR in PEM format
      * @throws AcmeTpmException
      */
-    public String getCertRequestPEM(String alias) throws AcmeTpmException {
+    public String getCertRequestPEM(String alias, String commonName, boolean includeBaseDN) throws AcmeTpmException {
         logger.debug("Generating CSR for alias " + alias);
         try {
-            PKCS10CertificationRequest request = createCertRequest(alias);
+            PKCS10CertificationRequest request = createCertRequest(alias, commonName, includeBaseDN);
             StringWriter sw = new StringWriter();
             JcaPEMWriter writer = new JcaPEMWriter(sw);
             writer.writeObject(request);
@@ -333,9 +327,14 @@ public class TpmProvider {
      * @return Signed Certificate Request
      * @throws AcmeTpmException
      */
-    // TODO: Update so that the profile is correct unless EJBCA will do that for us
-    private PKCS10CertificationRequest createCertRequest(String alias) throws AcmeTpmException {
+    private PKCS10CertificationRequest createCertRequest(String alias, String commonName, boolean includeBaseDN) throws AcmeTpmException {
         logger.debug("Attempting to build CSR for {}", alias);
+
+        // If a null commonName is passed in, set the value to be the same as the alias.
+        if (commonName == null) {
+            logger.debug("No commonName passed in. Setting CN to alias, {}", alias);
+            commonName = alias;
+        }
 
         // Get the keys
         logger.debug("Getting the keys");
@@ -343,21 +342,34 @@ public class TpmProvider {
         
         // Build the distinguished name 
         var distinguishedNameBuilder = new X500NameBuilder(BCStyle.INSTANCE);
-        for (var dnEntry: BASE_DN.keySet()) {
-            distinguishedNameBuilder.addRDN(dnEntry, BASE_DN.get(dnEntry));
+        if (includeBaseDN) {
+            logger.debug("Adding base_dn to request");
+            distinguishedNameBuilder.addRDN(BCStyle.C, "US");
+            distinguishedNameBuilder.addRDN(BCStyle.ST, "District of Columbia");
+            distinguishedNameBuilder.addRDN(BCStyle.L, "Washington");
+            distinguishedNameBuilder.addRDN(BCStyle.O, "Federal Aviation Administration");
         }
-        distinguishedNameBuilder.addRDN(BCStyle.CN, alias);
+        
+
+        distinguishedNameBuilder.addRDN(BCStyle.CN, commonName);
         logger.debug("Built SubjectDN of {}", distinguishedNameBuilder.build().toString());
 
         // Build subjectAltName
         var subjectAlternativeName = new GeneralNamesBuilder().addName(new GeneralName(GeneralName.rfc822Name, alias)).build();
         logger.debug("Built SAN of {}", subjectAlternativeName.toString());
 
+        // Add Cert Policy OID
+        var medDevHwOID = "1.3.27.16.1.1.0.8";
+        PolicyInformation policyInformation = new PolicyInformation(new ASN1ObjectIdentifier(medDevHwOID));
+        CertificatePolicies certificatePolicies = new CertificatePolicies(policyInformation);
+
         try {
             PKCS10CertificationRequest request = new JcaPKCS10CertificationRequestBuilder(
-                distinguishedNameBuilder.build(),
-                keyPair.getPublic()
-                ).addAttribute(Extension.subjectAlternativeName, subjectAlternativeName)
+                    distinguishedNameBuilder.build(),
+                    keyPair.getPublic()
+                )
+                .addAttribute(Extension.subjectAlternativeName, subjectAlternativeName)
+                .addAttribute(Extension.certificatePolicies, certificatePolicies)
                 .build(new JcaContentSignerBuilder(CERT_SIG_ALG).build(keyPair.getPrivate()));
             return request;
         } catch (OperatorCreationException e) {
@@ -373,7 +385,7 @@ public class TpmProvider {
     private KeyPair newKeyPair() throws AcmeTpmException {
         KeyPairGenerator kpGen;
         try {
-            logger.debug("Attempting to create new " + KEYPAIR_ALGORITHM + " keys with parameters" + EC_PARAM_SPEC);
+            logger.debug("Attempting to create new {}  keys with parameters {}", KEYPAIR_ALGORITHM, EC_PARAM_SPEC);
             kpGen = KeyPairGenerator.getInstance(KEYPAIR_ALGORITHM, tpmProvider);
             kpGen.initialize(new ECGenParameterSpec(EC_PARAM_SPEC), new SecureRandom());
             logger.debug("Keypair successfully created, returning");
