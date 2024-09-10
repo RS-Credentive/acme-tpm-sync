@@ -64,6 +64,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import gov.dot.faa.ang.idms.acmetpm.AcmeTpmException;
+import gov.dot.faa.ang.idms.acmetpm.PropLoader;
+import gov.dot.faa.ang.idms.acmetpm.tpmcrypto.UserCertRequestBuilder;
+
 
 /* 
  * Class to encapsulate cryptographic functionality for a TPM-backed PKCS11 keystore for ACME
@@ -72,7 +75,7 @@ import gov.dot.faa.ang.idms.acmetpm.AcmeTpmException;
  * 
  */
 public class TpmProvider {
-
+    private static final PropLoader props = new PropLoader();
     private static final Logger logger = LoggerFactory.getLogger(TpmProvider.class);
     private static final String KEYPAIR_ALGORITHM = "EC";
     private static final String CERT_SIG_ALG = "SHA256withECDSA";
@@ -129,6 +132,7 @@ public class TpmProvider {
         } else {
             KeyPair keypair = null;
             try {
+                String USER_ALIAS = props.getProp("token.userAlias");
                 // Look for the KeyPair in the Token Keystore
                 keypair = getKeyPair(USER_ALIAS);
                 logger.debug("Completed loading userKeyPair from keystore - returning.");
@@ -330,6 +334,11 @@ public class TpmProvider {
     private PKCS10CertificationRequest createCertRequest(String alias, String commonName, boolean includeBaseDN) throws AcmeTpmException {
         logger.debug("Attempting to build CSR for {}", alias);
 
+        if (alias == props.getProp("token.userAlias")) {
+            logger.debug("Request for user Cert detected.");
+            return new UserCertRequestBuilder(userKeyPair).getRequest();
+        }
+
         // If a null commonName is passed in, set the value to be the same as the alias.
         if (commonName == null) {
             logger.debug("No commonName passed in. Setting CN to alias, {}", alias);
@@ -342,15 +351,6 @@ public class TpmProvider {
         
         // Build the distinguished name 
         var distinguishedNameBuilder = new X500NameBuilder(BCStyle.INSTANCE);
-        if (includeBaseDN) {
-            logger.debug("Adding base_dn to request");
-            distinguishedNameBuilder.addRDN(BCStyle.C, "US");
-            distinguishedNameBuilder.addRDN(BCStyle.ST, "District of Columbia");
-            distinguishedNameBuilder.addRDN(BCStyle.L, "Washington");
-            distinguishedNameBuilder.addRDN(BCStyle.O, "Federal Aviation Administration");
-        }
-        
-
         distinguishedNameBuilder.addRDN(BCStyle.CN, commonName);
         logger.debug("Built SubjectDN of {}", distinguishedNameBuilder.build().toString());
 
