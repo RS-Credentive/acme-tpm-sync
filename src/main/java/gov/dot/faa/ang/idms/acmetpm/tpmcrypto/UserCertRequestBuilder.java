@@ -2,20 +2,26 @@ package gov.dot.faa.ang.idms.acmetpm.tpmcrypto;
 
 import gov.dot.faa.ang.idms.acmetpm.PropLoader;
 
+import java.io.IOException;
 import java.net.InetAddress;
+import java.net.UnknownHostException;
 import java.security.KeyPair;
-import java.security.cert.Certificate;
-
 import org.bouncycastle.asn1.ASN1ObjectIdentifier;
 import org.bouncycastle.asn1.x500.X500Name;
 import org.bouncycastle.asn1.x500.X500NameBuilder;
 import org.bouncycastle.asn1.x500.style.BCStyle;
 import org.bouncycastle.asn1.x509.Extension;
+import org.bouncycastle.asn1.x509.Extensions;
+import org.bouncycastle.asn1.x509.ExtensionsGenerator;
+import org.bouncycastle.asn1.x509.GeneralName;
+import org.bouncycastle.asn1.x509.GeneralNames;
 import org.bouncycastle.asn1.x509.CertificatePolicies;
 import org.bouncycastle.asn1.x509.PolicyInformation;
+import org.bouncycastle.operator.OperatorCreationException;
 import org.bouncycastle.operator.jcajce.JcaContentSignerBuilder;
 import org.bouncycastle.pkcs.PKCS10CertificationRequest;
 import org.bouncycastle.pkcs.jcajce.JcaPKCS10CertificationRequestBuilder;
+import org.bouncycastle.asn1.pkcs.PKCSObjectIdentifiers;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -32,21 +38,19 @@ public class UserCertRequestBuilder {
         String userEmail = props.getProp("user.email");
         var subjectName = getX500Name(userEmail);
 
-        var certPoliciesAttribute = new CertificatePolicies(
-            new PolicyInformation(new ASN1ObjectIdentifier(MED_DEV_HW_OID))
-        );
-
-        
+        ExtensionsGenerator requestExtensions = new ExtensionsGenerator();
+        requestExtensions.addExtension(getCertPoliciesExtension());
+        // requestExtensions.addExtension(getSubjectAlternativeNamesExtension(userEmail));
 
         try {
             request = new JcaPKCS10CertificationRequestBuilder(
                 subjectName, 
                 userKeyPair.getPublic()
             )
-            .addAttribute(Extension.certificatePolicies, certPoliciesAttribute.toASN1Primitive())
+            .addAttribute(PKCSObjectIdentifiers.pkcs_9_at_extensionRequest,  requestExtensions.generate())
             .build(new JcaContentSignerBuilder(CERT_SIG_ALG).build(userKeyPair.getPrivate()));
-        } catch (Exception e) {
-            throw new AcmeTpmException("Unable to build certRequest: " + e.getLocalizedMessage());
+        } catch (OperatorCreationException e) {
+            throw new AcmeTpmException("Unable to build userCertRequest: " + e.getLocalizedMessage());
         }       
         
     }
@@ -72,8 +76,33 @@ public class UserCertRequestBuilder {
     private String getHostname() throws AcmeTpmException {
         try {
             return InetAddress.getLocalHost().getCanonicalHostName();
-        } catch (Exception e) {
+        } catch (UnknownHostException e) {
             throw new AcmeTpmException("Unable to determine hostname when trying to create the UserCertRequest: " + e.getLocalizedMessage());
+        }
+    }
+
+    private Extensions getSubjectAlternativeNamesExtension(String userEmail) throws AcmeTpmException {
+        try {
+            var subjectAltName = new GeneralNames(new GeneralName(GeneralName.rfc822Name, userEmail));
+            var sanExtensionGenerator = new ExtensionsGenerator();
+            sanExtensionGenerator.addExtension(Extension.subjectAlternativeName, false, subjectAltName);
+            return sanExtensionGenerator.generate();
+        } catch (IOException e) {
+            throw new AcmeTpmException("Unable to generate SAN for UserCertRequest: " + e.getLocalizedMessage());
+        }
+    }
+
+    private Extensions getCertPoliciesExtension() throws AcmeTpmException {
+        var idmsCertPolicies = new CertificatePolicies(
+            new PolicyInformation(new ASN1ObjectIdentifier(MED_DEV_HW_OID))
+        );
+
+        var extGen = new ExtensionsGenerator();
+        try {
+            extGen.addExtension(Extension.certificatePolicies, false, idmsCertPolicies);
+            return extGen.generate();
+        } catch (IOException e) {
+            throw new AcmeTpmException("Unable to generate certificate Policy Extension.");
         }
     }
 

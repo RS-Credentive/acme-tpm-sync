@@ -334,9 +334,13 @@ public class TpmProvider {
     private PKCS10CertificationRequest createCertRequest(String alias, String commonName, boolean includeBaseDN) throws AcmeTpmException {
         logger.debug("Attempting to build CSR for {}", alias);
 
+        // Get the keys
+        logger.debug("Getting the keys");
+        KeyPair keyPair = getKeyPair(alias);
+
         if (alias == props.getProp("token.userAlias")) {
             logger.debug("Request for user Cert detected.");
-            return new UserCertRequestBuilder(userKeyPair).getRequest();
+            return new UserCertRequestBuilder(keyPair).getRequest();
         }
 
         // If a null commonName is passed in, set the value to be the same as the alias.
@@ -345,10 +349,6 @@ public class TpmProvider {
             commonName = alias;
         }
 
-        // Get the keys
-        logger.debug("Getting the keys");
-        KeyPair keyPair = getKeyPair(alias);
-        
         // Build the distinguished name 
         var distinguishedNameBuilder = new X500NameBuilder(BCStyle.INSTANCE);
         distinguishedNameBuilder.addRDN(BCStyle.CN, commonName);

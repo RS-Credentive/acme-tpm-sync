@@ -1,6 +1,5 @@
 package gov.dot.faa.ang.idms.acmetpm;
 
-import java.io.IOException;
 import java.net.InetAddress;
 import java.net.MalformedURLException;
 import java.net.URI;
@@ -812,6 +811,8 @@ public class AcmeTpm {
 
             // Trick here - when InetAdress parses an IP, the string start with "/",
             // otherwise it doesn't
+
+            // TODO: Distinguish between IP Addresses and DomainNames for purposes of Subject Alternative Name
             var address = InetAddress.getByName(domain);
             if (address.toString().startsWith("/")) {
                 logger.debug("Creating order for ip address " + domain);
