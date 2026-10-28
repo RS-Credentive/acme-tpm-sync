@@ -1,0 +1,134 @@
+@Library('devops-library') _
+def podYamlSpec = podYaml(
+    'jenkins-prod-angidms',
+    null,
+    null,
+    null,
+    null,
+    [],
+    [
+             memoryLimit: '3Gi'
+    ]
+)
+pipeline {
+    agent {
+        kubernetes {
+            defaultContainer 'jnlp'
+            yaml podYamlSpec
+        }
+    }
+
+    triggers {
+        cron('0 0 1 * *')
+    }
+
+
+    environment {
+        // SonarQube Scanner configuration
+        SCANNER_OPTS = '-Xmx2048m'
+    }
+    
+    stages {
+        stage('Workspace Cleanup') {
+            steps {
+                script {
+                    echo "========== Cleaning Workspace =========="
+                    
+                    // Clean the workspace
+                    deleteDir()
+                    
+                    echo "Workspace cleaned successfully"
+                }
+            }
+        }
+        
+        stage('Checkout') {
+            steps {
+                checkout scm
+                script {
+                    // Display repository information
+                    echo "========== Repository Information =========="
+                    echo "Git URL: ${scm.getUserRemoteConfigs()[0].getUrl()}"
+                    echo "Branch: ${env.BRANCH_NAME ?: env.GIT_BRANCH ?: 'main'}"
+                    echo "Build Number: ${env.BUILD_NUMBER}"
+                    echo "Workspace: ${env.WORKSPACE}"
+                }
+            }
+        }
+
+        stage('SonarQube Analysis') {
+            steps {
+                script {
+                    echo "========== SonarQube Analysis =========="
+
+                    // Extract and set project information from Git URL
+                    def gitUrl = scm.getUserRemoteConfigs()[0].getUrl()
+                    echo "Full Git URL: ${gitUrl}"
+                    
+                    // Extract project key from git URL (e.g., ssh://git@git.faa.gov:7999/idms/idms.git -> idms-idms.git)
+                    def projectKeyMatch = gitUrl =~ /.*\/([^\/]+)\/([^\/]+\.git)$/
+                    def org = projectKeyMatch[0][1]
+                    def repo = projectKeyMatch[0][2]
+                    env.SONAR_PROJECT_KEY = "${org}-${repo}"
+                    echo "Generated Project Key: ${env.SONAR_PROJECT_KEY}"
+
+                    withSonarQubeEnv('Sonar') {
+                        dir('code') {
+                            def scannerHome = tool 'sonarscanner-cli-latest'
+                            sh """
+                                ${scannerHome}/bin/sonar-scanner \\
+                                    -Dsonar.projectKey=${env.SONAR_PROJECT_KEY} \\
+                                    -Dsonar.projectName='${env.SONAR_PROJECT_KEY}' \\
+                                    -Dsonar.sources=. \\
+                                    -Dsonar.java.source=17 \\
+                                    -Dsonar.exclusions='**/target/**,**/CertificateWorkflowTestHarness/**,**/PropertyEncryptionClient/**,**/scripts/**,**/systemd/**,**/docker/**,**/*.jar,**/*.class' \\
+                                    -Dsonar.java.binaries=. \\
+                                    -Dsonar.scm.provider=git \\
+                                    -Dsonar.sourceEncoding=UTF-8
+                            """
+                        }
+                    }
+                }
+            }
+        }
+
+    }
+    
+    post {
+        always {
+            script {
+                echo "========== Pipeline Completion =========="
+                echo "Pipeline completed for project: ${env.SONAR_PROJECT_KEY}"
+                echo "Build result: ${currentBuild.result ?: 'SUCCESS'}"
+            }
+        }
+        
+        success {
+            script {
+                echo "========== Success Notification =========="
+                echo "SonarQube analysis completed successfully!"
+                echo "Project: ${env.SONAR_PROJECT_NAME}"
+                echo "Key: ${env.SONAR_PROJECT_KEY}"
+            }
+        }
+        
+        failure {
+            script {
+                echo "========== Failure Notification =========="
+                echo "Pipeline failed. Check the logs above for details."
+                echo "Common issues:"
+                echo "1. Maven compilation errors"
+                echo "2. Test failures"
+                echo "3. SonarQube quality gate violations"
+                echo "4. SonarQube server connectivity issues"
+            }
+        }
+        
+        cleanup {
+            script {
+                echo "========== Cleanup =========="
+                echo "Pipeline cleanup completed"
+            }
+        }
+    }
+}
