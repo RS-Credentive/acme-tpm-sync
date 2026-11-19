@@ -1,22 +1,18 @@
 package gov.dot.faa.ang.idms;
 
+import module java.base;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import gov.dot.faa.ang.idms.acmetpm.AcmeTpm;
 import gov.dot.faa.ang.idms.acmetpm.AcmeTpmException;
-
-import org.slf4j.LoggerFactory;
-import org.slf4j.Logger;
-import java.io.Console;
-import java.util.Scanner;
-
-import java.util.Date;
-import java.util.HashMap;
-import java.util.Properties;
-import java.util.concurrent.Callable;
-
 import picocli.CommandLine;
 import picocli.CommandLine.Command;
+import picocli.CommandLine.Model.CommandSpec;
 import picocli.CommandLine.Option;
 import picocli.CommandLine.Parameters;
+import picocli.CommandLine.Spec;
 
 @Command(name = "acmetpm", mixinStandardHelpOptions = true, version = "acmetpm 0.1", description = "Enables management of TPM backed SSL Server keys with ACME")
 class App implements Callable<Integer> {
@@ -45,11 +41,22 @@ class App implements Callable<Integer> {
 
     static AcmeTpm acmeTpm;
 
+    @Spec
+    CommandSpec spec;
+
     private static Logger logger;    
 
     // Error codes for return functions.
-    static final int FAIL = 1;
-    static final int SUCCESS = 0;
+    static final Integer FAIL = 1;
+    static final Integer SUCCESS = 0;
+
+    private PrintWriter out() {
+        return spec.commandLine().getOut();
+    }
+
+    private PrintWriter err() {
+        return spec.commandLine().getErr();
+    }
 
     /**
      * Function called by main to run the command. Checks to see if "--help" or "-h"
@@ -91,7 +98,7 @@ class App implements Callable<Integer> {
      * 
      * @return SUCCESS(0) or FAIL(0) as returned by the underlying method
      */
-    private int processCommand() {
+    private Integer processCommand() {
         // We can give print the help message without setting anything up
         if (commandString.equals("help")) {
             return printHelp();
@@ -102,7 +109,7 @@ class App implements Callable<Integer> {
         try {
             acmeTpm = new AcmeTpm();
         } catch (AcmeTpmException e) {
-            System.err.println("Could not initialize acmeTpm: " + e.getMessage());
+            err().println("Could not initialize acmeTpm: " + e.getMessage());
             System.exit(1);
         }
 
@@ -116,12 +123,12 @@ class App implements Callable<Integer> {
             if (acmeTpm.userKeyExists()) {
                 acmeTpm.initialize();
             } else {
-                System.err.println(
+                err().println(
                         "The user key does not exist on the TPM. Please call 'requestusercert' before using any other commands.");
                 return FAIL;
             }
         } catch (AcmeTpmException e) {
-            System.err.println("Error checking for user key: " + e.getMessage());
+            err().println("Error checking for user key: " + e.getMessage());
             return FAIL;
         }
 
@@ -163,11 +170,13 @@ class App implements Callable<Integer> {
                     return revokeCertificate(domain);
                 } else if (orderID != null) {
                     return revokeCertificate(orderID);
+                } else {
+                    err().println("revokecertificate flag must have a domain or orderID to process");
                 }
                 
 
             default:
-                System.out.println("The command " + commandString
+                out().println("The command " + commandString
                         + " is not recognized. Use command \"help\" for a list of commands.");
                 return SUCCESS;
         }
@@ -182,50 +191,50 @@ class App implements Callable<Integer> {
      * 
      * @return
      */
-    private int diagnostic() {
+    private Integer diagnostic() {
         try {
             // List user info
-            System.out.println("User information:");
+            out().println("User information:");
             var keyInfo = acmeTpm.getUserKeyInfo();
             if (keyInfo.size() > 0) {
                 for (var key : keyInfo.keySet()) {
-                    System.out.println(key + " : " + keyInfo.get(key));
+                    out().println(key + " : " + keyInfo.get(key));
                 }
             } else {
-                System.out.println("No attributes registered for keyStore entry");
+                out().println("No attributes registered for keyStore entry");
             }
 
             // List domains
-            System.out.println("\nManaged Domain Information:");
+            out().println("\nManaged Domain Information:");
             listDomains();
 
             // List ACME metadata
-            System.out.println("\nFetching ACME server metadata to confirm connectivity.");
+            out().println("\nFetching ACME server metadata to confirm connectivity.");
             var metadataValues = acmeTpm.testAcmeConnection();
             for (String key : metadataValues.keySet()) {
-                System.out.println("KEY: " + key + " / VALUE: " + metadataValues.get(key));
+                out().println("KEY: " + key + " / VALUE: " + metadataValues.get(key));
             }
 
             // Apache Virtual Hosts
-            System.out.println("\nListing Apache Virtual Hosts configured.");
+            out().println("\nListing Apache Virtual Hosts configured.");
             var vhostConfigs = acmeTpm.listApacheVirtualHosts();
 
             for (String vhost : vhostConfigs.keySet()) {
-                System.out.println("Virtual Host: " + vhost);
+                out().println("Virtual Host: " + vhost);
                 for (var entry : vhostConfigs.get(vhost).entrySet()) {
-                    System.out.println("\t" + entry.getKey() + ": " + entry.getValue());
+                    out().println("\t" + entry.getKey() + ": " + entry.getValue());
                 }
             }
 
             // Pending orders
-            System.out.println("Listing orders associated with the account on the acme server.");
+            out().println("Listing orders associated with the account on the acme server.");
             for (var orderStatusString: acmeTpm.getOrderInfo()) {
-                System.out.println(orderStatusString);
+                out().println(orderStatusString);
             }
 
             return SUCCESS;
         } catch (AcmeTpmException e) {
-            System.err.println("Diagnostic failed: " + e.getMessage());
+            err().println("Diagnostic failed: " + e.getMessage());
             return FAIL;
         }
     }
@@ -235,11 +244,11 @@ class App implements Callable<Integer> {
      * 
      * @return SUCCESS(0)
      */
-    private int printHelp() {
+    private Integer printHelp() {
         // Note this function is called if the command "help" is entered, or if any
         // command is passed the "--help" switch, so figure it out and do the right
         // thing.
-        System.out.println("Print a convenient help message here.");
+        out().println("Print a convenient help message here.");
         return SUCCESS;
     }
 
@@ -248,13 +257,13 @@ class App implements Callable<Integer> {
      * 
      * @return SUCCESS(0) or FAIL(1)
      */
-    private int requestUserCert() {
+    private Integer requestUserCert() {
         try {
             String csr = acmeTpm.generateUserCSR();
-            System.out.println(csr);
+            out().println(csr);
             return SUCCESS;
         } catch (AcmeTpmException e) {
-            System.err.println("Unable to generate user private key and CSR: " + e.getMessage());
+            err().println("Unable to generate user private key and CSR: " + e.getMessage());
             ;
             return FAIL;
         }
@@ -266,11 +275,11 @@ class App implements Callable<Integer> {
      * 
      * @return SUCCESS(0) or FAIL(1)
      */
-    private int installUserCert() {
+    private Integer installUserCert() {
         try {
             Console console = System.console();
             if (console == null) {
-                System.err.println("Unable to get system console.");
+                err().println("Unable to get system console.");
                 return FAIL;
             }
 
@@ -279,7 +288,7 @@ class App implements Callable<Integer> {
             String input;
             boolean recording = false;
 
-            System.out.println("Paste the certificate in PEM format:");
+            out().println("Paste the certificate in PEM format:");
 
             while ((certScanner.hasNextLine())) {
                 input = certScanner.nextLine();
@@ -306,7 +315,7 @@ class App implements Callable<Integer> {
             // send the PEM cert to the update function.
             acmeTpm.updateUserCert(pemCert);
         } catch (AcmeTpmException e) {
-            System.err.println("Unable to install user Certificate: " + e.getMessage());
+            err().println("Unable to install user Certificate: " + e.getMessage());
             return FAIL;
         }
 
@@ -320,19 +329,19 @@ class App implements Callable<Integer> {
      * @return SUCCESS(0) if we were able to get a list, or FAIL(0) if we weren't
      *         able to get a list
      */
-    private int listDomains() {
+    private Integer listDomains() {
         try {
             var managedDomains = acmeTpm.listDomains();
             if (managedDomains.isEmpty()) {
-                System.out.println("No domains are being managed on this server.");
+                out().println("No domains are being managed on this server.");
             } else {
-                System.out.println("We are managing keys and certificates for the following domains:\n");
+                out().println("We are managing keys and certificates for the following domains:\n");
                 for (String domain : managedDomains) {
-                    System.out.println(domain);
+                    out().println(domain);
                 }
             }
         } catch (AcmeTpmException e) {
-            System.out.println("Error receieved while trying to list Domains: " + e.getMessage());
+            out().println("Error receieved while trying to list Domains: " + e.getMessage());
             return FAIL;
         }
 
@@ -346,18 +355,18 @@ class App implements Callable<Integer> {
      * @return SUCCESS(0) if able to print info or FAIL(1) if an exception is raised
      *         while trying.
      */
-    private int printAllInfo() {
+    private Integer printAllInfo() {
         try {
             var domains = acmeTpm.listDomains();
-            if (domains.size() == 0) {
-                System.out.println("No domains are under management by the TPM.");
+            if (domains.isEmpty()) {
+                out().println("No domains are under management by the TPM.");
             } else {
                 for (String domain : domains) {
                     printDomainInfo(domain);
                 }
             }
         } catch (AcmeTpmException e) {
-            System.out.println(
+            out().println(
                     "Error receieved while trying to print information for all managed domains: " + e.getMessage());
             return FAIL;
         }
@@ -372,22 +381,22 @@ class App implements Callable<Integer> {
      * @return SUCCESS(0) if able to print info or FAIL(1) if an exception is raised
      *         while trying.
      */
-    private int printDomainInfo(String domainString) {
+    private Integer printDomainInfo(String domainString) {
         try {
             var domainInfo = acmeTpm.getDomainInfo(domainString);
             if (domainInfo.size() > 0) {
-                System.out.println("Domain information for Domain: " + domainString);
+                out().println("Domain information for Domain: " + domainString);
                 var keyInfo = acmeTpm.getKeyInfo(domainString);
                 for (var key : keyInfo.keySet()) {
-                    System.out.println(key + " : " + keyInfo.get(key));
+                    out().println(key + " : " + keyInfo.get(key));
                 }
                 return SUCCESS;
             } else {
-                System.out.println(domainString + " is not a managed domain.");
+                out().println(domainString + " is not a managed domain.");
                 return FAIL;
             }
         } catch (AcmeTpmException e) {
-            System.out.println("Error while attempting to get info for domain " + domainString + ": " + e.getMessage());
+            out().println("Error while attempting to get info for domain " + domainString + ": " + e.getMessage());
             return FAIL;
         }
     }
@@ -400,14 +409,14 @@ class App implements Callable<Integer> {
      * @return SUCCESS(0) if able to print expiring domains or FAIL(1) if an
      *         exception is raised while trying.
      */
-    private int getExpiringDomains(Date expirationDate) {
+    private Integer getExpiringDomains(Date expirationDate) {
         HashMap<String, Date> expiringDomains;
 
         // Populate hashmap with "domain" : certificate expiration date
         try {
             expiringDomains = acmeTpm.getExpiringDomains(expirationDate);
         } catch (AcmeTpmException e) {
-            System.err.println("Error getting expiration dates from TPM backed token: " + e.getMessage());
+            err().println("Error getting expiration dates from TPM backed token: " + e.getMessage());
             return FAIL;
         }
 
@@ -415,10 +424,10 @@ class App implements Callable<Integer> {
         // requested date
         if (expiringDomains.size() > 0) {
             for (String domain : expiringDomains.keySet()) {
-                System.out.println("Domain " + domain + " expiring on " + expiringDomains.get(domain));
+                out().println("Domain " + domain + " expiring on " + expiringDomains.get(domain));
             }
         } else {
-            System.out.println("No domain certificate expire before" + expirationDate.toString());
+            out().println("No domain certificate expire before" + expirationDate.toString());
         }
         return SUCCESS;
     }
@@ -431,14 +440,14 @@ class App implements Callable<Integer> {
      * @return SUCCESS(0) if able to add domain or FAIL(1) if an exception is raised
      *         while trying.
      */
-    private static int addDomain(String domain) {
+    private Integer addDomain(String domain) {
         try {
-            System.out.print("Generating and storing keypair for  " + domain + "...");
+            out().print("Generating and storing keypair for  " + domain + "...");
             acmeTpm.addDomain(domain);
-            System.out.println("done.");
+            out().println("done.");
             return SUCCESS;
         } catch (Exception e) {
-            System.err.println("Unable to add " + domain + " to managed Domains: " + e.getMessage());
+            err().println("Unable to add " + domain + " to managed Domains: " + e.getMessage());
             return FAIL;
         }
     }
@@ -449,22 +458,22 @@ class App implements Callable<Integer> {
      * 
      * @return
      */
-    private static int checkOrders() {
+    private Integer checkOrders() {
         try {
-            System.out.println("Logging in and checking status of ACME Requests");
+            out().println("Logging in and checking status of ACME Requests");
             var orderStatus = acmeTpm.checkOrders();
             if (orderStatus.keySet().size() < 1) {
-                System.out.println("There are no ACME Requests in progress.");
+                out().println("There are no ACME Requests in progress.");
             }
             for (var key : orderStatus.keySet()) {
-                System.out.println("ACME REQUEST: " + key);
+                out().println("ACME REQUEST: " + key);
                 for (var statusLine : orderStatus.get(key)) {
-                    System.out.println(statusLine);
+                    out().println(statusLine);
                 }
             }
 
         } catch (AcmeTpmException e) {
-            System.err.println("Error checking orders: " + e.getMessage());
+            err().println("Error checking orders: " + e.getMessage());
             return FAIL;
         }
         return SUCCESS;
@@ -478,12 +487,12 @@ class App implements Callable<Integer> {
      * @param domain
      * @return
      */
-    private int deleteDomain(String domain) {
+    private Integer deleteDomain(String domain) {
         try {
             acmeTpm.deleteDomain(domain);
             return SUCCESS;
         } catch (AcmeTpmException e) {
-            System.out.println("Unable to delete domain " + domain + ": " + e.getMessage());
+            out().println("Unable to delete domain " + domain + ": " + e.getMessage());
             return FAIL;
         }
     }
@@ -494,7 +503,7 @@ class App implements Callable<Integer> {
      * (if the certificate is no longer available)
      * @return
      */
-    private int revokeCertificate(String domainOrOrder) {
+    private Integer revokeCertificate(String domainOrOrder) {
         // TODO: fix this
         return SUCCESS;
     }
@@ -505,7 +514,7 @@ class App implements Callable<Integer> {
      * @param args
      */
     public static void main(String[] args) {
-        int exitCode = new CommandLine(new App()).execute(args);
+        Integer exitCode = new CommandLine(App.class).execute(args);
         System.exit(exitCode);
     }
 
