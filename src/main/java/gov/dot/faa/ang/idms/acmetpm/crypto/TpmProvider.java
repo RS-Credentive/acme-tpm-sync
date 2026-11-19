@@ -1,44 +1,12 @@
-package gov.dot.faa.ang.idms.acmetpm.tpmcrypto;
+package gov.dot.faa.ang.idms.acmetpm.crypto;
 
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.StringReader;
-import java.io.StringWriter;
-import java.math.BigInteger;
-import java.nio.file.Path;
-import java.security.InvalidAlgorithmParameterException;
-import java.security.KeyManagementException;
-import java.security.KeyPair;
-import java.security.KeyPairGenerator;
-import java.security.KeyStore;
+import module java.base;
+
 import java.security.KeyStore.PasswordProtection;
 import java.security.KeyStore.PrivateKeyEntry;
-import java.security.KeyStoreException;
-import java.security.NoSuchAlgorithmException;
-import java.security.PrivateKey;
-import java.security.Provider;
-import java.security.PublicKey;
-import java.security.SecureRandom;
-import java.security.Security;
-import java.security.UnrecoverableEntryException;
-import java.security.UnrecoverableKeyException;
-import java.security.cert.Certificate;
 import java.security.cert.CertificateException;
+import java.security.cert.Certificate;
 import java.security.cert.X509Certificate;
-import java.security.spec.ECGenParameterSpec;
-import java.time.Duration;
-import java.time.Instant;
-import java.util.ArrayList;
-import java.util.Date;
-import java.util.HashMap;
-
-import javax.net.ssl.KeyManager;
-import javax.net.ssl.KeyManagerFactory;
-import javax.net.ssl.SSLContext;
-import javax.net.ssl.TrustManager;
-import javax.net.ssl.TrustManagerFactory;
 
 import org.bouncycastle.asn1.ASN1ObjectIdentifier;
 import org.bouncycastle.asn1.x500.X500Name;
@@ -65,10 +33,10 @@ import org.slf4j.LoggerFactory;
 
 import gov.dot.faa.ang.idms.acmetpm.AcmeTpmException;
 import gov.dot.faa.ang.idms.acmetpm.PropLoader;
-import gov.dot.faa.ang.idms.acmetpm.tpmcrypto.UserCertRequestBuilder;
+import gov.dot.faa.ang.idms.acmetpm.crypto.bridge.Pkcs11TpmBridge;
 
 
-/* 
+/** 
  * Class to encapsulate cryptographic functionality for a TPM-backed PKCS11 keystore for ACME
  * 
  * @author robert.sherwood@credentive.com
@@ -253,7 +221,7 @@ public class TpmProvider {
      */
     public HashMap<String, String> getPkcs11Paths(String alias) throws AcmeTpmException {
         // Initialize the PKCS11 utility
-        var pkcs11Util = new UtilPKCS11(alias);
+        var pkcs11Util = new Pkcs11TpmBridge(alias);
 
         // Get the pkcs11 paths
         return pkcs11Util.getPaths();
@@ -340,7 +308,7 @@ public class TpmProvider {
 
         if (alias == props.getProp("token.userAlias")) {
             logger.debug("Request for user Cert detected.");
-            return new UserCertRequestBuilder(keyPair).getRequest();
+            return new AccountCertificateRequestBuilder(keyPair).getRequest();
         }
 
         // If a null commonName is passed in, set the value to be the same as the alias.

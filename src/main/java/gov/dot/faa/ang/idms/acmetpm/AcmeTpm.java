@@ -1,21 +1,6 @@
 package gov.dot.faa.ang.idms.acmetpm;
 
-import java.net.InetAddress;
-import java.net.MalformedURLException;
-import java.net.URI;
-import java.net.URISyntaxException;
-import java.net.URL;
-import java.net.UnknownHostException;
-import java.nio.file.Path;
-import java.security.cert.X509Certificate;
-import java.time.Duration;
-import java.time.Instant;
-import java.util.ArrayList;
-import java.util.Date;
-import java.util.HashMap;
-import java.util.List;
-
-import javax.net.ssl.SSLContext;
+import module java.base;
 
 import org.shredzone.acme4j.Account;
 import org.shredzone.acme4j.AccountBuilder;
@@ -35,9 +20,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import gov.dot.faa.ang.idms.acmetpm.acme.IdmsAcmeProvider;
-import gov.dot.faa.ang.idms.acmetpm.apacheconfig.ApacheConfigReader;
-import gov.dot.faa.ang.idms.acmetpm.apacheconfig.ApacheHTTPAuthz;
-import gov.dot.faa.ang.idms.acmetpm.tpmcrypto.TpmProvider;
+import gov.dot.faa.ang.idms.acmetpm.crypto.TpmProvider;
+import gov.dot.faa.ang.idms.acmetpm.webserver.apache.ApacheConfigReader;
+import gov.dot.faa.ang.idms.acmetpm.webserver.apache.ApacheHTTPAuthz;
 
 /**
  * Wraps calls to the EJBCA ACME API, leveraging TPM Backed private keys and
@@ -422,7 +407,7 @@ public class AcmeTpm {
             logger.debug("Fulfilling order for {}", domain);
 
             // get the certificate from the order
-            X509Certificate certificate = order.getCertificate().getCertificate();
+            java.security.cert.X509Certificate certificate = order.getCertificate().getCertificate();
             statusStrings.add("Got certificate " + certificate.getSubjectX500Principal().getName());
 
             // Update the keystore with the new certificate

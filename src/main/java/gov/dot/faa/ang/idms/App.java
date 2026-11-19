@@ -323,13 +323,13 @@ class App implements Callable<Integer> {
     private int listDomains() {
         try {
             var managedDomains = acmeTpm.listDomains();
-            if (managedDomains.size() > 0) {
+            if (managedDomains.isEmpty()) {
+                System.out.println("No domains are being managed on this server.");
+            } else {
                 System.out.println("We are managing keys and certificates for the following domains:\n");
                 for (String domain : managedDomains) {
                     System.out.println(domain);
                 }
-            } else {
-                System.out.println("No domains are being managed on this server.");
             }
         } catch (AcmeTpmException e) {
             System.out.println("Error receieved while trying to list Domains: " + e.getMessage());

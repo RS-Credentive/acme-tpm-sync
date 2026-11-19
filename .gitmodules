@@ -1,0 +1,3 @@
+[submodule "src/native/windows-x86_64"]
+	path = src/native/windows-x86_64
+	url = https://github.com/RS-Credentive/TpmKeyHelper.git

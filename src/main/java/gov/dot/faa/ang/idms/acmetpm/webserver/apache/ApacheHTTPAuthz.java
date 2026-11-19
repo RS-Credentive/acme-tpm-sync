@@ -1,4 +1,4 @@
-package gov.dot.faa.ang.idms.acmetpm.apacheconfig;
+package gov.dot.faa.ang.idms.acmetpm.webserver.apache;
 
 import java.io.IOException;
 import java.nio.file.Files;

@@ -1,4 +1,4 @@
-package gov.dot.faa.ang.idms.acmetpm.tpmcrypto;
+package gov.dot.faa.ang.idms.acmetpm.crypto.bridge;
 
 import gov.dot.faa.ang.idms.acmetpm.AcmeTpmException;
 import gov.dot.faa.ang.idms.acmetpm.PropLoader;
@@ -18,9 +18,9 @@ import org.slf4j.LoggerFactory;
  * private key: "pkcs11:model=NitroTPM;manufacturer=AMZN;serial=0000000000000000;token=label;id=%75%73%65%72%4B%65%79%50%61%69%72;type=private"
  * public key: "pkcs11:model=NitroTPM;manufacturer=AMZN;serial=0000000000000000;token=label;id=%75%73%65%72%4B%65%79%50%61%69%72;object=userKeyPair;type=cer"
  */
-public class UtilPKCS11 {
+public final class Pkcs11TpmBridge implements TpmCryptoBridge {
 
-    private static final Logger logger = LoggerFactory.getLogger(UtilPKCS11.class);
+    private static final Logger logger = LoggerFactory.getLogger(Pkcs11TpmBridge.class);
 
     PropLoader props = new PropLoader();
     private final String label = props.getProp("token.label");
@@ -32,7 +32,7 @@ public class UtilPKCS11 {
      * Constructer
      * @param Accepts a string representing the key ID
      */
-    public UtilPKCS11(String keyIDString) throws AcmeTpmException {
+    public Pkcs11TpmBridge(String keyIDString) throws AcmeTpmException {
         initializeLibrary();
         acmeSlotID = acmeSlot();
         if (acmeSlotID != 0) {

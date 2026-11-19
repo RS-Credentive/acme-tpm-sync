@@ -10,3 +10,4 @@
 .vscode/
 target/
 .settings/
+!dependencies/local/net/augeas/augeas/0.0.2/augeas-0.0.2.jar
