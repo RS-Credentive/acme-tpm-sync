@@ -9,7 +9,7 @@
     <maven.compiler.source>25</maven.compiler.source>
     <maven.compiler.target>25</maven.compiler.target>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-    <junit.version>5.6.0</junit.version>
+    <junit.version>5.9.3</junit.version>
     <maven-enforcer-plugin.version>3.7.0</maven-enforcer-plugin.version>
     <maven-checkstyle-plugin.version>3.6.0</maven-checkstyle-plugin.version>
     <checkstyle.version>14.4.0</checkstyle.version>
@@ -41,7 +41,6 @@
   </dependencyManagement>
 
   <dependencies>
-
     <dependency>
       <groupId>com.googlecode.lanterna</groupId>
       <artifactId>lanterna</artifactId>
@@ -89,6 +88,35 @@
   </dependencies>
   <build>
     <plugins>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>apache-resources-plugin</artifactId>
+        <version>3.3.1</version>
+        <executions>
+          <execution>
+            <id>copy-native-dll</id>
+            <phase>process-resources</phase>
+            <goals>
+              <goal>copy-resource</goal>
+            </goals>
+            <configuration>
+              <outputDirectory>
+                ${project.build.outputDirectory}native/windows-x86_64
+              </outputDirectory>
+              <resources>
+                <resource>
+                  <directory>
+                    ${project.baseDir}/native/windows-x86_64/bin/Release/net8.0
+                  </directory>
+                  <includes>
+                    <include>TpmKeyHelper.dll</include>
+                  </includes>
+                </resource>
+              </resources>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-enforcer-plugin</artifactId>
