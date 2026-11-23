@@ -24,7 +24,7 @@ public final class CapiTpmBridge implements TpmCryptoBridge {
                 tempDll = Files.createTempFile("TpmKeyHelper", ".dll", attr).toFile();
             } else {
                 tempDll = Files.createTempFile("TpmKeyHelper", ".dll").toFile();  // This is *literally* Sonarqube's suggested fix, which it is tagging as non-compliant
-                if (!tempDll.setReadable(true, true) || tempDll.setWritable(true, true)) {
+                if (!(tempDll.setReadable(true, true) || tempDll.setWritable(true, true))) {
                     throw new IOException("Unable to set file permissions safely for temporary file");
                 }
             }
