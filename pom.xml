@@ -85,6 +85,11 @@
       <artifactId>augeas</artifactId>
       <version>0.0.2</version>
     </dependency>
+    <dependency>
+      <groupId>org.json</groupId>
+      <artifactId>json</artifactId>
+      <version>20260814</version>
+    </dependency>
   </dependencies>
   <build>
     <plugins>
@@ -109,7 +114,7 @@
                     src/native/windows-x86_64/bin/Release/net8.0/win-x64/publish
                   </directory>
                   <includes>
-                    <include>TpmKeyHelper.dll</include>
+                    <include>WindowsHelperFunctions.dll</include>
                   </includes>
                 </resource>
               </resources>
@@ -166,6 +171,7 @@
         <artifactId>maven-surefire-plugin</artifactId>
         <version>${maven-surefire-plugin.version}</version>
         <configuration>
+          <!-- TODO: This next line seems unsafe - can we limit native-access? -->
           <argLine>@{argLine} --enable-native-access=ALL-UNNAMED</argLine>
         </configuration>
       </plugin>

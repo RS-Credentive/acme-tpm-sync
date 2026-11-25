@@ -22,7 +22,7 @@ import org.slf4j.LoggerFactory;
 import gov.dot.faa.ang.idms.acmetpm.acme.IdmsAcmeProvider;
 import gov.dot.faa.ang.idms.acmetpm.crypto.TpmProvider;
 import gov.dot.faa.ang.idms.acmetpm.webserver.apache.ApacheConfigReader;
-import gov.dot.faa.ang.idms.acmetpm.webserver.apache.ApacheHTTPAuthz;
+import gov.dot.faa.ang.idms.acmetpm.webserver.apache.ApacheChallengePublisher;
 
 /**
  * Wraps calls to the EJBCA ACME API, leveraging TPM Backed private keys and
@@ -509,7 +509,7 @@ public class AcmeTpm {
                 case "http-01":
                     cleanupChallengesResults.add("Deleting challenge file for domain " + domain);
                     var challengeToken = ((Http01Challenge) challenge).getToken();
-                    ApacheHTTPAuthz.deleteAuthzFile(Path.of(apacheConfig.getDocumentRootforHostname(domain)),
+                    ApacheChallengePublisher.deleteAuthzFile(Path.of(apacheConfig.getDocumentRootforHostname(domain)),
                             challengeToken);
                     break;
                 // Can't process DNS challenges until proxy is completed.
@@ -603,7 +603,7 @@ public class AcmeTpm {
         String authorization = challenge.getAuthorization();
 
         Path authorizationResourcePath = Path.of(apacheConfig.getDocumentRootforHostname(domain));
-        ApacheHTTPAuthz.createAuthzFile(authorizationResourcePath, token, authorization);
+        ApacheChallengePublisher.createAuthzFile(authorizationResourcePath, token, authorization);
         responseStrings.add("     Wrote token file to " + authorizationResourcePath.toString());
 
         try {

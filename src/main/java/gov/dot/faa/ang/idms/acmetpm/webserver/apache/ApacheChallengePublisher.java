@@ -15,8 +15,8 @@ import gov.dot.faa.ang.idms.acmetpm.AcmeTpmException;
 /**
  * ApacheHTTPAuthz is responsible for creating a file to support HTTP Authorization for an ACME Challenge
  */
-public final class ApacheHTTPAuthz {
-    static Logger logger = LoggerFactory.getLogger(ApacheHTTPAuthz.class);
+public final class ApacheChallengePublisher {
+    static Logger logger = LoggerFactory.getLogger(ApacheChallengePublisher.class);
 
     private static final Path challengePath = Path.of(".well-known", "acme-challenge");
 
