@@ -3,6 +3,7 @@ package gov.dot.faa.ang.idms.acmetpm.crypto.bridge;
 import module java.base;
 import java.security.cert.X509Certificate; // This is imported through the module, but the code linter is confused.
 import java.security.*;
+import java.security.Signature;
 
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.condition.*;
@@ -18,12 +19,16 @@ public class CapiTpmBridgeTest {
     @AfterEach 
     void cleanupKeyStoreEntry() {
         try {
-            KeyStore ks = KeyStore.getInstance("Windows-MY", "SunMSCAPI");
-            ks.load(null, null);
-            if (ks.containsAlias(testAlias)) {
-                // Remove the testAlias key and store
-                ks.deleteEntry(testAlias);
-                ks.store(null, null);
+            for (KeyStore ks : new KeyStore[] {
+                KeyStore.getInstance("Windows-MY", "SunMSCAPI"), // User store
+                KeyStore.getInstance("Windows-MY-LOCALMACHINE", "SunMSCAPI") // Machine store
+            }) {
+                ks.load(null, null);
+                if (ks.containsAlias(testAlias)) {
+                    // Remove the testAlias key and store
+                    ks.deleteEntry(testAlias);
+                    ks.store(null, null);
+                }
             }
         } catch (Exception e) {
             System.err.println("Unable to clean up key with alias " + testAlias);
