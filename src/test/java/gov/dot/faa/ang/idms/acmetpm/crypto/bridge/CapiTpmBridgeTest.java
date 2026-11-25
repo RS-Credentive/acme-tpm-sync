@@ -33,18 +33,29 @@ public class CapiTpmBridgeTest {
     @Test
     void shouldGenerateNonExportableTpmKeyAndSignPayload() throws Throwable {
         // Generate a TPM key using the CapiTpmBridge
-        assertDoesNotThrow(() -> CapiTpmBridge.generateTpmKey(testAlias, testContainer, testSubjectDN), "CapiTpmBridge.generateTpmKey should not throw an exception");
+        assertDoesNotThrow(() -> CapiTpmBridge.generateTpmKey(testAlias, testContainer, testSubjectDN), "CapiTpmBridge.generateTpmKey should not throw an exception");     
 
-        // Check for errors returned by the native function (if any)
+        // Determine whether key was created in User or Machine store
+        KeyStore ksWithAlias = null;
+
+        for (KeyStore ks : new KeyStore[] {
+            KeyStore.getInstance("Windows-MY", "SunMSCAPI"), // User store
+            KeyStore.getInstance("Windows-MY-LOCALMACHINE", "SunMSCAPI") // Machine store
+        }) {
+            ks.load(null, null);
+            if (ks.containsAlias(testAlias)) {
+                System.out.println("Key with alias " + testAlias + " found in keystore: " + ks.getType());
+                ksWithAlias = ks;
+                break;
+            }
+        }
+
         
-
         // Verify that the keystore contains the expected entry
-        KeyStore ks = KeyStore.getInstance("Windows-MY", "SunMSCAPI");
-        ks.load(null, null);
-        assertTrue(ks.containsAlias(testAlias), "Generated key alias should exist in the keystore.");
+        assertNotNull(ksWithAlias, "Generated key alias should exist in the keystore.");
 
         // Verify the certificate DN
-        X509Certificate cert = assertInstanceOf(X509Certificate.class, ks.getCertificate(testAlias));
+        X509Certificate cert = assertInstanceOf(X509Certificate.class, ksWithAlias.getCertificate(testAlias));
         assertEquals(testSubjectDN, cert.getSubjectX500Principal().getName());
 
         // Verify the key
@@ -52,7 +63,7 @@ public class CapiTpmBridgeTest {
         assertEquals(2048, publicKey.getModulus().bitLength());
 
         // Verify that key is opaque and non-exportable
-        PrivateKey privateKey = (PrivateKey) ks.getKey(testAlias, null);
+        PrivateKey privateKey = (PrivateKey) ksWithAlias.getKey(testAlias, null);
         assertNotNull(privateKey, "Private Key should not be null");
         assertNull(privateKey.getEncoded(), "Attempting to get the bits of the private key should fail");
 

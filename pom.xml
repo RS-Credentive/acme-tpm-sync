@@ -111,7 +111,7 @@
               <resources>
                 <resource>
                   <directory>
-                    src/native/windows-x86_64/bin/Release/net8.0/win-x64/publish
+                    src/native/windows-x86_64/src/WindowsHelperFunctions/bin/Release/net8.0/win-x64/publish
                   </directory>
                   <includes>
                     <include>WindowsHelperFunctions.dll</include>
