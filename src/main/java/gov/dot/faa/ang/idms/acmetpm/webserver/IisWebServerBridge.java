@@ -2,7 +2,6 @@ package gov.dot.faa.ang.idms.acmetpm.webserver;
 
 import module java.base;
 
-import gov.dot.faa.ang.idms.acmetpm.webserver.iis.IisConfigReader;
 import org.json.*;
 
 /**
@@ -26,13 +25,21 @@ public final class IisWebServerBridge implements WebServerBridge {
         }
     }
 
-    public List<SiteConfig> getSiteConfig(String siteName) {
+    public static List<SiteConfig> getSiteConfig(String jsonConfig) {
         var siteConfigList = new ArrayList<SiteConfig>();
 
         try {
-            IisConfigReader.readConfig();
-            
-        } catch (Throwable e) {
+            var configArrayJSON = new JSONArray(jsonConfig);
+            for (var configJSON : configArrayJSON) {
+                if (configJSON instanceof JSONObject jsonObject) {
+                    var siteConfig = SiteConfig.fromJson(jsonObject.toString());
+                    siteConfigList.add(siteConfig);
+                } else {
+                    throw new IllegalArgumentException("Expected a JSON object for each site configuration.");
+                }
+            }
+
+        } catch (JSONException e) {
             throw new RuntimeException("Failed to read IIS configuration", e);
         }
 

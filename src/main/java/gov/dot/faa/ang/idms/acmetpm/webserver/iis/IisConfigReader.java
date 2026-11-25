@@ -1,18 +1,21 @@
 package gov.dot.faa.ang.idms.acmetpm.webserver.iis;
 
+import static java.lang.foreign.ValueLayout.ADDRESS;
+import static java.lang.foreign.ValueLayout.JAVA_INT;
+
 import module java.base;
 
-import org.slf4j.*;
-
-import static java.lang.foreign.ValueLayout.*;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import gov.dot.faa.ang.idms.acmetpm.PlatformLibraryLoader;
+import gov.dot.faa.ang.idms.acmetpm.webserver.IisWebServerBridge;
 import gov.dot.faa.ang.idms.acmetpm.webserver.IisWebServerBridge.SiteConfig;
 
 public class IisConfigReader {
     private static final Logger logger = LoggerFactory.getLogger(IisConfigReader.class);
 
-    public static void readConfig() throws Throwable {
+    public List<SiteConfig> readConfig() throws Throwable {
         if(!System.getProperty("os.name").toLowerCase().contains("win")) {
             throw new UnsupportedOperationException("This function can only be called on Windows.");
         }
@@ -54,15 +57,20 @@ public class IisConfigReader {
             }
 
             logger.info("Successfully read IIS configuration buffer.");
+
             var configJson = configBuffer.getString(0, StandardCharsets.UTF_8);
             logger.debug("IIS Configuration JSON: {}", configJson);
+
 
             String errorDetails = errorBuffer.getString(0, StandardCharsets.UTF_8);
             if (!errorDetails.isEmpty()) {
                 logger.warn("IIS Configuration reading returned warnings: {}", errorDetails);
             }
+
+            return IisWebServerBridge.getSiteConfig(configJson);
         } catch (Throwable e) {
             logger.error("Error while reading IIS configuration", e);
+            throw new RuntimeException("Failed to read IIS configuration", e);
         }
 
     }
